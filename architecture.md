@@ -440,14 +440,99 @@ stay aligned.
 mouse wheel changes the camera multiplier on desktop, and two-finger
 `touchstart`/`touchmove` adjusts it for pinch zoom on mobile. The DOM overlay is
 not scaled. **`MapScene`** ([src/render/MapScene.ts](src/render/MapScene.ts))
-uses the render frame's elapsed time to alternate hero/rat/zombie idle sprites
-every 500ms. The frame offsets follow the SPD Java reference: `HeroSprite`
-uses `12x15`, `RatSprite` uses `16x15`, and `UndeadSprite` uses `12x16`, so
-frame 1 is the same source rectangle shifted right by one frame width.
+uses render-frame elapsed time for actor idles, but only after the world has
+been truly still for a short delay; movement, attacks, damage, depth changes,
+selection changes, and log updates reset the idle timer. Hero and mob idles mix
+subtle bob/squash motion with occasional alternate sprite frames so actors do
+not all shift in lockstep.
 
 Verified with `tsc --noEmit` using the bundled Node runtime. The managed
 sandbox still blocks full Vite/Vitest execution because esbuild attempts to
 inspect parent directories outside the permitted filesystem roots.
 
-**Next:** Continue Phase 7 UI polish: inventory item rows, modal spacing, and
-status pane fidelity.
+### Phase 8.1 - AI Adjacency Priority & Fleeing UX COMPLETE
+Fixed the mob hunting decision tree in **`Enemy`**
+([src/core/actors/Enemy.ts](src/core/actors/Enemy.ts)). A hunting mob now checks
+Chebyshev distance to the hero before asking A* for a path. If the hero is in
+melee range (`distance === 1`, including diagonals), the mob issues
+`attackHero`; only non-adjacent targets go through pathfinding. This prevents
+the parallel "copy the hero" step when a mob is already next to the player.
+
+Added a focused headless regression in **`Enemy.test`**
+([src/core/actors/Enemy.test.ts](src/core/actors/Enemy.test.ts)) proving a
+diagonally adjacent hunter attacks immediately and does not move.
+
+Updated the auto-walk orchestrator in **`main.ts`** ([src/main.ts](src/main.ts))
+for fleeing UX. Starting travel now snapshots the deterministic `Enemy.seq` IDs
+of all enemies already visible in the hero FOV. The travel loop continues past
+those known threats, but cancels immediately if a newly visible hostile ID
+appears, if movement fails, if the hero dies, or if the existing
+`hero:damaged` event fires.
+
+Verified with `tsc --noEmit` using the bundled Node runtime. A focused Vitest
+run for `Enemy.test.ts` is currently blocked by the managed sandbox before tests
+load because esbuild cannot read the parent directory while resolving
+`vite.config.ts`; no TypeScript errors were reported.
+
+**Next:** Manually smoke test mobile fleeing: with an already-visible chasing
+mob, tap a safe floor tile and confirm auto-walk continues until damage, death,
+blocked movement, or a newly revealed enemy appears.
+
+### Phase 8.2 - Attack Speed Verification COMPLETE
+Verified and corrected hero attack timing in the core turn queue. **`Hero`**
+([src/core/actors/Hero.ts](src/core/actors/Hero.ts)) now computes action cost
+per intent: movement/wait uses `TICK / hero.stats.speed`, while bump-attacks
+use `(TICK * hero.stats.attackDelay) / hero.stats.speed`. This keeps hero haste
+and weapon attack delay multiplicative instead of hardcoding every hero action
+to one tick.
+
+**`CombatStats`** ([src/core/combat/CombatStats.ts](src/core/combat/CombatStats.ts))
+now exposes `attackDelay` as a modifier-backed stat with a safe default of `1`.
+**`Inventory`** ([src/core/items/Inventory.ts](src/core/items/Inventory.ts))
+applies an equipped weapon's optional `attackDelay` as an `equip:weapon`
+modifier, so unequipping or swapping weapons cleanly restores the base delay.
+**`parseItem`** ([src/core/data/parse.ts](src/core/data/parse.ts)) accepts and
+clamps optional weapon `attackDelay` values from JSON content.
+
+Added headless coverage for the stat layer, inventory equip/unequip behavior,
+item parsing, and a `GameWorld` bump-attack regression that proves a
+`0.5`-delay weapon with hero speed `2` schedules the hero's next turn at `0.25`.
+
+Verified with `tsc --noEmit` using the bundled Node runtime. Vitest remains
+blocked by the managed sandbox before tests load because esbuild cannot read the
+parent directory while resolving `vite.config.ts`; no TypeScript errors were
+reported.
+
+### Phase 9.1 - Ranged Combat & Targeting Foundation COMPLETE
+Added the first ranged-combat path while preserving the core/UI firewall.
+**`lineOfFire`** ([src/core/fov/lineOfFire.ts](src/core/fov/lineOfFire.ts)) is
+a pure Bresenham projectile ray utility. It returns the cells from shooter to
+target and stops early when an intermediate cell is solid or when an injected
+entity-blocker predicate reports a non-target actor in the way. Dedicated tests
+cover clear rays, wall interruption, and intermediate entity blockers.
+
+**`GameWorld.rangedAttack(targetCell)`** ([src/core/game/GameWorld.ts](src/core/game/GameWorld.ts))
+is now the single world-owned ranged intent. It refuses dead/out-of-bounds/no
+target shots, checks `lineOfFire` against walls and intervening enemies, then
+buffers a hero `rangedAttack` action through the normal turn queue. The actual
+hit/damage calculation reuses the hero's current `CombatStats`, so equipped
+weapon damage and attack-delay modifiers apply exactly like bump combat.
+
+**`Hero`** ([src/core/actors/Hero.ts](src/core/actors/Hero.ts)) now treats
+`rangedAttack` as an attack-speed action, spending
+`(TICK * hero.stats.attackDelay) / hero.stats.speed`. Added headless
+`GameWorld` coverage for a clear ranged shot killing a target and a blocked
+shot refusing to spend a turn.
+
+**`main.ts`** ([src/main.ts](src/main.ts)) owns the browser targeting state via
+`TargetingMode`. Opening Quickslot activates ranged targeting; the next world
+tap captures the screen-to-grid target cell, exits targeting mode, and calls
+`world.rangedAttack(cell)` instead of running touch-to-walk/touch-to-attack.
+Escape cancels targeting. **`GameOverlay`** ([src/ui/GameOverlay.ts](src/ui/GameOverlay.ts))
+now fires the Quickslot action only when opening the quickslot shell, preventing
+an accidental retarget when closing it.
+
+Verified with `tsc --noEmit` using the bundled Node runtime. A focused Vitest
+run for `lineOfFire.test.ts` and `GameWorld.test.ts` is still blocked by the
+managed sandbox before tests load because esbuild cannot read the parent
+directory while resolving `vite.config.ts`; no TypeScript errors were reported.

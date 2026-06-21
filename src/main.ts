@@ -34,6 +34,7 @@ import { GameOverlay, type OverlayState } from "@/ui/GameOverlay";
 import { MainMenu } from "@/ui/MainMenu";
 
 type AppState = "MainMenu" | "Playing";
+type TargetingMode = "ranged";
 const AUTO_WALK_STEP_SECONDS = 0.08;
 const WHEEL_ZOOM_STEP = 0.0015;
 const PINCH_ZOOM_SENSITIVITY = 1;
@@ -78,10 +79,12 @@ async function boot(): Promise<void> {
   let world: GameWorld | null = null;
   let seed = "";
   let selectedCell: number | null = null;
+  let targetingMode: TargetingMode | null = null;
   let autoPath: number[] = [];
   // When set, travel is in "approach an enemy" mode and stops once adjacent;
   // when null, travel follows `autoPath` to an empty tile.
   let autoTarget: Enemy | null = null;
+  let autoWalkKnownHostileIds = new Set<number>();
   let autoWalkElapsed = 0;
   let zoomMultiplier = 1;
   let pinchDistance: number | null = null;
@@ -175,6 +178,7 @@ async function boot(): Promise<void> {
     world = nextWorld;
     seed = nextSeed;
     selectedCell = null;
+    targetingMode = null;
     cancelAutoWalk();
 
     menu?.destroy();
@@ -230,6 +234,7 @@ async function boot(): Promise<void> {
     world = null;
     seed = "";
     selectedCell = null;
+    targetingMode = null;
     cancelAutoWalk();
     overlay?.destroy();
     overlay = null;
@@ -244,9 +249,9 @@ async function boot(): Promise<void> {
   // Travel is a convenience layer over the same turn-based intent API the
   // player drives by hand: it issues exactly one `tryMoveHero` per step (never
   // mutating core state directly — Pillar 1). Two modes:
-  //   - travel:  follow `autoPath` to an empty tile; ANY visible hostile aborts.
-  //              If a hostile is already visible, a floor tap still takes one
-  //              manual step toward the tapped tile instead of starting travel.
+  //   - travel:  follow `autoPath` to an empty tile. Enemies already visible
+  //              when travel starts are treated as known threats, so the player
+  //              can flee across a room; a newly revealed hostile still aborts.
   //   - approach: chase `autoTarget` and stop once adjacent; only a DIFFERENT
   //               visible hostile aborts (so the target you tapped doesn't
   //               cancel its own approach).
@@ -265,6 +270,24 @@ async function boot(): Promise<void> {
     );
   }
 
+  function visibleHostiles(except: Enemy | null = null): Enemy[] {
+    if (!world) return [];
+    const current = world;
+    return current.enemies.filter(
+      (enemy) => enemy !== except && current.fov.visible.has(enemy.pos),
+    );
+  }
+
+  function hostileId(enemy: Enemy): number {
+    return enemy.seq;
+  }
+
+  function newVisibleHostileExists(): boolean {
+    return visibleHostiles().some(
+      (enemy) => !autoWalkKnownHostileIds.has(hostileId(enemy)),
+    );
+  }
+
   function heroDistanceTo(cell: number): number {
     const current = world!;
     return (
@@ -276,6 +299,7 @@ async function boot(): Promise<void> {
   function cancelAutoWalk(): void {
     autoPath = [];
     autoTarget = null;
+    autoWalkKnownHostileIds.clear();
     autoWalkElapsed = 0;
   }
 
@@ -292,7 +316,6 @@ async function boot(): Promise<void> {
     if (!world) return;
     const current = world;
     if (target === current.heroPos || !current.grid.isWalkable(target)) return;
-    if (visibleHostileExists()) return; // never travel with a mob in view
 
     const path = findPath(current.grid, current.heroPos, target, {
       passable: (cell) =>
@@ -301,32 +324,20 @@ async function boot(): Promise<void> {
     if (!path || path.length < 2) return; // no route, or already standing there
 
     autoPath = path.slice(1); // drop the hero's own cell; keep the steps ahead
+    autoWalkKnownHostileIds = new Set(visibleHostiles().map(hostileId));
     autoWalkElapsed = AUTO_WALK_STEP_SECONDS; // take the first step next frame
   }
 
-  function stepOnceToward(target: number): void {
-    if (!world) return;
-    const current = world;
-    if (target === current.heroPos || !current.grid.isWalkable(target)) return;
-
-    const path = findPath(current.grid, current.heroPos, target, {
-      passable: (cell) =>
-        current.grid.isWalkable(cell) && (cell === target || !current.isOccupied(cell)),
-    });
-    if (!path || path.length < 2) return;
-
-    const next = path[1]!;
-    const dx = current.grid.xOf(next) - current.grid.xOf(current.heroPos);
-    const dy = current.grid.yOf(next) - current.grid.yOf(current.heroPos);
-    current.tryMoveHero(dx, dy);
+  function handleTravelTap(target: number): void {
+    startAutoWalk(target);
   }
 
-  function handleTravelTap(target: number): void {
-    if (visibleHostileExists()) {
-      stepOnceToward(target);
-      return;
-    }
-    startAutoWalk(target);
+  function startTargetingMode(mode: TargetingMode): void {
+    if (appState !== "Playing" || !world?.heroAlive) return;
+    cancelAutoWalk();
+    targetingMode = mode;
+    selectedCell = null;
+    bus.emit("combat:log", { line: "Select a target." });
   }
 
   /** Begin approaching a targeted enemy; the per-step logic stops adjacent. */
@@ -350,7 +361,7 @@ async function boot(): Promise<void> {
 
   function stepTravel(current: GameWorld): void {
     if (autoPath.length === 0) return;
-    if (visibleHostileExists()) {
+    if (newVisibleHostileExists()) {
       cancelAutoWalk();
       return;
     }
@@ -361,7 +372,7 @@ async function boot(): Promise<void> {
 
     // A `hero:damaged` event during the turn may have already cancelled us.
     if (!autoWalkActive()) return;
-    if (!moved || current.heroPos !== next || !current.heroAlive || visibleHostileExists()) {
+    if (!moved || current.heroPos !== next || !current.heroAlive || newVisibleHostileExists()) {
       cancelAutoWalk();
       return;
     }
@@ -429,6 +440,15 @@ async function boot(): Promise<void> {
     );
     const cell = pixelToCell(vp, current.grid, x, y);
     selectedCell = cell;
+
+    if (targetingMode !== null) {
+      const mode = targetingMode;
+      targetingMode = null;
+      if (cell !== null && mode === "ranged") {
+        current.rangedAttack(cell);
+      }
+      return;
+    }
 
     // Decide what the tap means (pure), then execute via intents only.
     const plan = planTap(
@@ -508,12 +528,19 @@ async function boot(): Promise<void> {
     if (appState === "Playing") cancelAutoWalk();
   });
 
+  bus.on("ui:quickslot", () => {
+    startTargetingMode("ranged");
+  });
+
   bus.on("loop:frame", ({ dt }) => {
     if (appState !== "Playing" || !world || !autoWalkActive()) return;
     // Per-frame safety so cancellation feels instant even between steps:
-    // travel (autoTarget null) aborts on ANY visible hostile; approach aborts
-    // only on a hostile OTHER than the target.
-    if (!world.heroAlive || visibleHostileExists(autoTarget)) {
+    // travel aborts only on newly visible hostiles; approach aborts only on a
+    // hostile OTHER than the target.
+    if (
+      !world.heroAlive ||
+      (autoTarget ? visibleHostileExists(autoTarget) : newVisibleHostileExists())
+    ) {
       cancelAutoWalk();
       return;
     }
@@ -536,6 +563,13 @@ async function boot(): Promise<void> {
 
   window.addEventListener("keydown", (e) => {
     if (appState !== "Playing" || !world) return;
+    if (targetingMode !== null && e.key === "Escape") {
+      e.preventDefault();
+      targetingMode = null;
+      selectedCell = null;
+      bus.emit("combat:log", { line: "Targeting cancelled." });
+      return;
+    }
     if (overlay?.handleKeyDown(e)) return;
 
     const move = MOVES[e.key];

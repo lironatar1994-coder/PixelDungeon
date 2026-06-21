@@ -75,8 +75,30 @@ describe("parseEnemies / parseItems (collection guards)", () => {
 
   it("preserves item type-specific fields", () => {
     const items = parseItems([
-      { id: "sword", name: "Short Sword", type: "weapon", damageMin: 2, damageMax: 6 },
+      {
+        id: "sword",
+        name: "Short Sword",
+        type: "weapon",
+        damageMin: 2,
+        damageMax: 6,
+        attackDelay: 0.75,
+      },
     ]);
-    expect(items[0]).toMatchObject({ id: "sword", type: "weapon", damageMin: 2, damageMax: 6 });
+    expect(items[0]).toMatchObject({
+      id: "sword",
+      type: "weapon",
+      damageMin: 2,
+      damageMax: 6,
+      attackDelay: 0.75,
+    });
+  });
+
+  it("clamps invalid weapon attack delays away from zero", () => {
+    const [tooFast, invalid] = parseItems([
+      { id: "too_fast", type: "weapon", attackDelay: 0 },
+      { id: "invalid", type: "weapon", attackDelay: "fast" },
+    ]);
+    expect(tooFast!.attackDelay).toBeGreaterThan(0);
+    expect(invalid!.attackDelay).toBe(1);
   });
 });

@@ -52,6 +52,19 @@ describe("CombatStats component", () => {
     expect(s.damageMax).toBe(3);
   });
 
+  it("defaults attack delay to one turn and layers modifiers safely", () => {
+    const s = stats();
+    expect(s.attackDelay).toBe(1);
+    expect(s.baseOf("attackDelay")).toBe(1);
+
+    s.addModifier({ id: "quick-weapon", stat: "attackDelay", amount: -0.5 });
+    expect(s.attackDelay).toBe(0.5);
+    expect(s.baseOf("attackDelay")).toBe(1);
+
+    s.removeModifiers("quick-weapon");
+    expect(s.attackDelay).toBe(1);
+  });
+
   it("never lets an effective stat go negative", () => {
     const s = stats({ armor: 2 });
     s.addModifier({ id: "shred", stat: "armor", amount: -10 });

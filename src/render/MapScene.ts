@@ -35,6 +35,10 @@ const COLORS = {
   unseen: "#000000",
 };
 
+const IDLE_START_DELAY_SECONDS = 1.4;
+let previousActivitySignature: string | null = null;
+let lastActivityAt = 0;
+
 export interface MapView {
   grid: Grid;
   seed: string;
@@ -84,7 +88,7 @@ export function drawMapScene(
     zoomMultiplier,
   );
   const ts = vp.tileSize;
-  const idleFrame = Math.floor(frame.elapsed / 0.5) % 2;
+  const idleElapsed = idleElapsedAfterStillness(frame.elapsed, view);
   const minX = Math.max(0, Math.floor(-vp.offsetX / ts) - 1);
   const minY = Math.max(0, Math.floor(-vp.offsetY / ts) - 1);
   const maxX = Math.min(grid.width - 1, Math.ceil((frame.width - vp.offsetX) / ts) + 1);
@@ -152,11 +156,17 @@ export function drawMapScene(
       assets?.spriteForEnemy(enemy) ?? "rat",
       enemy.state === "hunt" ? COLORS.enemyHunt : COLORS.enemyWander,
       COLORS.enemyEdge,
-      idleFrame,
+      {
+        elapsed: idleElapsed,
+        key: `${enemy.name}:${enemy.pos}`,
+      },
     );
   }
 
-  drawCell(ctx, assets, vp, grid, view.heroPos, "hero", COLORS.hero, COLORS.heroEdge, idleFrame);
+  drawCell(ctx, assets, vp, grid, view.heroPos, "hero", COLORS.hero, COLORS.heroEdge, {
+    elapsed: idleElapsed,
+    key: `hero:${view.heroPos}`,
+  });
 
   if (view.selectedCell !== null) {
     const sx = grid.xOf(view.selectedCell);
@@ -178,12 +188,12 @@ function drawCell(
   sprite: SpriteKey,
   fill: string,
   edge?: string,
-  idleFrame = 0,
+  idle?: IdleState,
 ): void {
   const ts = vp.tileSize;
   const x = vp.offsetX + grid.xOf(cell) * ts;
   const y = vp.offsetY + grid.yOf(cell) * ts;
-  if (assets && drawSprite(ctx, assets, sprite, x, y, ts, 1, idleFrame)) {
+  if (assets && drawSprite(ctx, assets, sprite, x, y, ts, 1, idle)) {
     return;
   }
 
@@ -199,26 +209,109 @@ function drawSprite(
   y: number,
   size: number,
   alpha: number,
-  idleFrame = 0,
+  idle?: IdleState,
 ): boolean {
   const image = assets.imageFor(sprite);
   if (!image) return false;
-  const src = idleSourceRect(sprite, assets.sourceRect(sprite), idleFrame);
+  const base = assets.sourceRect(sprite);
+  const motion = idleMotion(sprite, idle);
+  const src = motion.useFrameOne ? { ...base, x: base.x + base.w } : base;
+  const dx = x + motion.dx * Math.max(1, size / 48);
+  const dy = y + motion.dy * Math.max(1, size / 48);
   ctx.save();
   ctx.globalAlpha = alpha;
   ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(image, src.x, src.y, src.w, src.h, x, y, size, size);
+  ctx.drawImage(
+    image,
+    src.x,
+    src.y,
+    src.w,
+    src.h,
+    dx,
+    dy,
+    size + motion.dw,
+    size + motion.dh,
+  );
   ctx.restore();
   return true;
 }
 
-function idleSourceRect(sprite: SpriteKey, src: ReturnType<SpriteSheetAssets["sourceRect"]>, idleFrame: number) {
-  if (idleFrame === 0 || !isIdleAnimated(sprite)) return src;
-  return { ...src, x: src.x + src.w };
+interface IdleState {
+  elapsed: number;
+  key: string;
 }
 
 function isIdleAnimated(sprite: SpriteKey): boolean {
   return sprite === "hero" || sprite === "rat" || sprite === "zombie";
+}
+
+interface IdleMotion {
+  useFrameOne: boolean;
+  dx: number;
+  dy: number;
+  dw: number;
+  dh: number;
+}
+
+function idleMotion(sprite: SpriteKey, idle?: IdleState): IdleMotion {
+  const still: IdleMotion = { useFrameOne: false, dx: 0, dy: 0, dw: 0, dh: 0 };
+  if (!idle || idle.elapsed <= 0 || !isIdleAnimated(sprite)) return still;
+
+  const h = visualHash(`${sprite}:${idle.key}`);
+  const offset = (h % 1700) / 1000;
+  const cycle = 2.4 + ((h >>> 8) % 1800) / 1000;
+  const phase = (idle.elapsed + offset) % cycle;
+  const pulse = phase / cycle;
+
+  if (pulse < 0.08) {
+    return { useFrameOne: false, dx: 0, dy: -1, dw: 0, dh: 1 };
+  }
+
+  if (pulse >= 0.42 && pulse < 0.5) {
+    return { useFrameOne: false, dx: 0, dy: 1, dw: 0, dh: -1 };
+  }
+
+  if (pulse >= 0.72 && pulse < 0.82) {
+    const useFrameOne = ((h >>> 16) + Math.floor((idle.elapsed + offset) / cycle)) % 3 === 0;
+    return useFrameOne
+      ? { useFrameOne: true, dx: 0, dy: 0, dw: 0, dh: 0 }
+      : { useFrameOne: false, dx: sprite === "rat" ? 1 : 0, dy: 0, dw: 0, dh: 0 };
+  }
+
+  return still;
+}
+
+function idleElapsedAfterStillness(elapsed: number, view: MapView): number {
+  const signature = activitySignature(view);
+  if (previousActivitySignature !== signature) {
+    previousActivitySignature = signature;
+    lastActivityAt = elapsed;
+    return 0;
+  }
+
+  return Math.max(0, elapsed - lastActivityAt - IDLE_START_DELAY_SECONDS);
+}
+
+function activitySignature(view: MapView): string {
+  return [
+    view.seed,
+    view.depth,
+    view.heroPos,
+    view.hero.hp,
+    view.hero.alive ? 1 : 0,
+    view.selectedCell ?? -1,
+    view.log.length,
+    ...view.enemies.map((e) => `${e.name}:${e.pos}:${e.state}:${e.hp}`),
+  ].join("|");
+}
+
+function visualHash(text: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
 }
 
 function drawSquare(

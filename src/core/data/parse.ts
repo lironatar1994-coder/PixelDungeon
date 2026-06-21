@@ -108,6 +108,9 @@ export function parseItem(raw: unknown): ItemDef | null {
   for (const key of ["damageMin", "damageMax", "defense", "heal"] as const) {
     if (key in rec) item[key] = num(rec, key, 0, { int: true, min: 0 });
   }
+  if ("attackDelay" in rec) {
+    item.attackDelay = num(rec, "attackDelay", 1, { min: 0.1, max: 10 });
+  }
   return item;
 }
 

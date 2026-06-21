@@ -20,7 +20,8 @@ export type StatKey =
   | "damageMin"
   | "damageMax"
   | "armor"
-  | "speed";
+  | "speed"
+  | "attackDelay";
 
 export interface BaseStats {
   maxHealth: number;
@@ -30,6 +31,8 @@ export interface BaseStats {
   damageMax: number;
   armor: number;
   speed?: number;
+  /** Attack action multiplier. 1 = normal, 0.5 = twice as fast, 2 = twice as slow. */
+  attackDelay?: number;
 }
 
 export interface StatModifier {
@@ -115,6 +118,9 @@ export class CombatStats {
   get speed(): number {
     return Math.max(0.0001, this.effective("speed"));
   }
+  get attackDelay(): number {
+    return Math.max(0.0001, this.effective("attackDelay"));
+  }
 
   // --- modifiers ---
 
@@ -178,6 +184,7 @@ export class CombatStats {
 
   private baseValue(stat: StatKey): number {
     if (stat === "speed") return this.base.speed ?? 1;
+    if (stat === "attackDelay") return this.base.attackDelay ?? 1;
     return this.base[stat];
   }
 }

@@ -15,6 +15,7 @@ import { CombatStats, type BaseStats } from "@/core/combat/CombatStats";
 export type HeroAction =
   | { kind: "move"; cell: number }
   | { kind: "attack"; target: number }
+  | { kind: "rangedAttack"; target: number }
   | { kind: "wait" };
 
 /** What the hero needs from the world to resolve an attack. */
@@ -47,12 +48,16 @@ export class Hero extends Actor {
 
     const action = this.pending;
     this.pending = null;
+    const actionCost =
+      action.kind === "attack" || action.kind === "rangedAttack"
+        ? (TICK * this.stats.attackDelay) / this.stats.speed
+        : TICK / this.stats.speed;
     if (action.kind === "move") {
       this.pos = action.cell;
-    } else if (action.kind === "attack") {
+    } else if (action.kind === "attack" || action.kind === "rangedAttack") {
       this.ctx.attack(action.target);
     }
-    this.spend(TICK / this.stats.speed);
+    this.spend(actionCost);
     return true;
   }
 }

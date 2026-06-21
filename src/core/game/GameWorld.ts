@@ -22,6 +22,7 @@ import { RNG } from "@/core/rng/Mulberry32";
 import { Hero, type HeroContext } from "@/core/actors/Hero";
 import { Enemy, type EnemySenses, type EnemyState } from "@/core/actors/Enemy";
 import { FieldOfView } from "@/core/fov/FieldOfView";
+import { lineOfFire } from "@/core/fov/lineOfFire";
 import { resolveAttack } from "@/core/combat/resolveAttack";
 import type { BaseStats, CombatStatsSnapshot } from "@/core/combat/CombatStats";
 import { Inventory, type InventorySnapshot } from "@/core/items/Inventory";
@@ -353,6 +354,27 @@ export class GameWorld {
   waitTurn(): boolean {
     if (this.heroDead) return false;
     this.hero.pending = { kind: "wait" };
+    this.processTurns();
+    return true;
+  }
+
+  rangedAttack(targetCell: number): boolean {
+    if (this.heroDead || !this.grid.inBoundsCell(targetCell)) return false;
+    const enemy = this.enemyAt(targetCell);
+    if (!enemy) {
+      this.pushLog("No target there.");
+      return false;
+    }
+
+    const path = lineOfFire(this.hero.pos, targetCell, this.grid, {
+      blocksCell: (cell) => cell !== targetCell && this.enemyAt(cell) !== null,
+    });
+    if (path.at(-1) !== targetCell) {
+      this.pushLog("No clear shot.");
+      return false;
+    }
+
+    this.hero.pending = { kind: "rangedAttack", target: targetCell };
     this.processTurns();
     return true;
   }

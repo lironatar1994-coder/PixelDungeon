@@ -129,6 +129,9 @@ export class Inventory {
     if (slot === "weapon") {
       this.stats.addModifier({ id: source, stat: "damageMin", amount: item.damageMin ?? 0 });
       this.stats.addModifier({ id: source, stat: "damageMax", amount: item.damageMax ?? 0 });
+      if (typeof item.attackDelay === "number") {
+        this.stats.addModifier({ id: source, stat: "attackDelay", amount: item.attackDelay - 1 });
+      }
     } else {
       this.stats.addModifier({ id: source, stat: "armor", amount: item.defense ?? 0 });
     }

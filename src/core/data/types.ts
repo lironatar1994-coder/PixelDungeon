@@ -41,6 +41,8 @@ export interface ItemDef {
   damageMin?: number;
   /** Weapon: maximum damage contributed when equipped. */
   damageMax?: number;
+  /** Weapon: attack action multiplier. 1 = normal, below 1 faster, above 1 slower. */
+  attackDelay?: number;
   /** Armor: damage-reduction ceiling contributed when equipped. */
   defense?: number;
   /** Potion: hit points restored when consumed. */

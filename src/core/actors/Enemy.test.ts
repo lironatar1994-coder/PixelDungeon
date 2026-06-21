@@ -122,6 +122,23 @@ describe("Enemy state machine", () => {
     expect(enemy.pos).not.toBe(hero.pos); // never steps onto the hero
   });
 
+  it("attacks before pathfinding when the hero is diagonally adjacent", () => {
+    const grid = new Grid(5, 5, Terrain.FLOOR);
+    const hero = { pos: grid.cell(3, 3) };
+    let attacks = 0;
+    const enemy = new Enemy(
+      grid.cell(2, 2),
+      def(),
+      makeSenses(grid, hero, { attackHero: () => attacks++ }),
+    );
+
+    enemy.act();
+
+    expect(enemy.state).toBe("hunt");
+    expect(attacks).toBe(1);
+    expect(enemy.pos).toBe(grid.cell(2, 2));
+  });
+
   it("gives up (Hunt -> Wander) after reaching the hero's last known spot", () => {
     const grid = new Grid(11, 3, Terrain.FLOOR);
     const hero = { pos: grid.cell(5, 1) };

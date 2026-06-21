@@ -8,8 +8,8 @@
  * Behaviour each turn:
  *   1. Check line of sight to the hero (its "FOV").
  *   2. If it can see the hero -> enter HUNT and remember the hero's cell.
- *   3. HUNT: A*-path toward the (last known) hero cell and take one step,
- *      stopping adjacent (combat arrives in Phase 4).
+ *   3. HUNT: if the hero is already in Chebyshev melee range, attack before
+ *      pathfinding; otherwise A*-path toward the last known hero cell.
  *      Lost the trail at the last known cell -> drop back to WANDER.
  *   4. WANDER: step to a random adjacent walkable cell.
  *
@@ -122,6 +122,11 @@ export class Enemy extends Actor {
   }
 
   private huntStep(target: number): void {
+    if (chebyshevDistance(this.senses.grid, this.pos, this.senses.heroPos()) === 1) {
+      this.senses.attackHero(this);
+      return;
+    }
+
     if (target === this.pos) return;
     const grid = this.senses.grid;
     const path = findPath(grid, this.pos, target, {
@@ -153,4 +158,11 @@ export class Enemy extends Actor {
       this.pos = this.senses.rng.pick(options);
     }
   }
+}
+
+function chebyshevDistance(grid: Grid, a: number, b: number): number {
+  return Math.max(
+    Math.abs(grid.xOf(a) - grid.xOf(b)),
+    Math.abs(grid.yOf(a) - grid.yOf(b)),
+  );
 }

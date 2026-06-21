@@ -4,6 +4,14 @@ import { Inventory } from "@/core/items/Inventory";
 import type { ItemDef } from "@/core/data/types";
 
 const sword: ItemDef = { id: "sword", name: "Short Sword", type: "weapon", damageMin: 2, damageMax: 6 };
+const dagger: ItemDef = {
+  id: "dagger",
+  name: "Quick Dagger",
+  type: "weapon",
+  damageMin: 1,
+  damageMax: 2,
+  attackDelay: 0.5,
+};
 const axe: ItemDef = { id: "axe", name: "War Axe", type: "weapon", damageMin: 4, damageMax: 10 };
 const armor: ItemDef = { id: "armor", name: "Leather Armor", type: "armor", defense: 3 };
 const potion: ItemDef = { id: "potion", name: "Potion", type: "potion", heal: 10 };
@@ -72,6 +80,19 @@ describe("Inventory", () => {
     inv.equip(axe); // replaces sword
     expect(stats.damageMax).toBe(13); // 3 + 10, NOT 3 + 6 + 10
     expect(inv.equippedIn("weapon")).toBe(axe);
+  });
+
+  it("equips weapon attack delay without mutating the base stat", () => {
+    const stats = freshStats();
+    const inv = new Inventory(stats, 10);
+    inv.add(dagger);
+
+    expect(inv.equip(dagger)).toBe(true);
+    expect(stats.attackDelay).toBe(0.5);
+    expect(stats.baseOf("attackDelay")).toBe(1);
+
+    inv.unequip("weapon");
+    expect(stats.attackDelay).toBe(1);
   });
 
   it("removing an equipped item also unequips it", () => {

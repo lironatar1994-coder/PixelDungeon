@@ -5,6 +5,7 @@ import {
   type HeroDamagedInfo,
 } from "@/core/game/GameWorld";
 import { ContentDatabase } from "@/core/data/ContentDatabase";
+import { Terrain } from "@/core/grid/terrain";
 
 // A small, valid content set so the world has data-driven enemies to spawn.
 const content = ContentDatabase.fromRaw(
@@ -21,6 +22,35 @@ const makeWorld = (seed: string, opts?: WorldOptions) =>
 const contentWithPotion = ContentDatabase.fromRaw(
   [],
   [{ id: "potion_healing", name: "Potion of Healing", type: "potion", heal: 15 }],
+);
+
+const contentWithFastWeapon = ContentDatabase.fromRaw(
+  [
+    {
+      id: "training_dummy",
+      name: "Training Dummy",
+      maxHealth: 1,
+      speed: 1,
+      vision: 0,
+      accuracy: 0,
+      evasion: 0,
+      damageMin: 0,
+      damageMax: 0,
+      armor: 0,
+      spawnWeight: 1,
+      minDepth: 1,
+    },
+  ],
+  [
+    {
+      id: "short_sword",
+      name: "Quick Test Blade",
+      type: "weapon",
+      damageMin: 10,
+      damageMax: 10,
+      attackDelay: 0.5,
+    },
+  ],
 );
 
 describe("GameWorld", () => {
@@ -117,6 +147,76 @@ describe("GameWorld", () => {
 
     const heroTurn = w.snapshot().queue.actors.find((actor) => actor.id === "hero");
     expect(heroTurn?.time).toBeCloseTo(0.5);
+  });
+
+  it("bump-attacks spend weapon attack delay scaled by current hero speed", () => {
+    const base = new GameWorld("WORLD-ATTACK-DELAY", contentWithFastWeapon, {
+      enemyCount: 1,
+    });
+    const adjacent = base.grid
+      .neighbours4(base.heroPos)
+      .find((cell) => base.grid.isWalkable(cell));
+    expect(adjacent).toBeDefined();
+    expect(base.enemies.length).toBeGreaterThan(0);
+
+    const snapshot = base.snapshot();
+    snapshot.enemies[0]!.pos = adjacent!;
+    snapshot.enemies[0]!.stats.hp = 1;
+    const w = GameWorld.fromSnapshot(snapshot, contentWithFastWeapon);
+    w.heroStats.addModifier({ id: "haste-test", stat: "speed", amount: 1 });
+
+    const dx = w.grid.xOf(adjacent!) - w.grid.xOf(w.heroPos);
+    const dy = w.grid.yOf(adjacent!) - w.grid.yOf(w.heroPos);
+    expect(w.tryMoveHero(dx, dy)).toBe(true);
+
+    const heroTurn = w.snapshot().queue.actors.find((actor) => actor.id === "hero");
+    expect(heroTurn?.time).toBeCloseTo(0.25);
+  });
+
+  it("rangedAttack damages an enemy through a clear line of fire", () => {
+    const base = new GameWorld("WORLD-RANGED-CLEAR", contentWithFastWeapon, {
+      enemyCount: 1,
+    });
+    const snapshot = base.snapshot();
+    const level = snapshot.dungeon.levels[0]!;
+    level.terrain = level.terrain.map(() => Terrain.FLOOR);
+
+    const heroCell = base.grid.cell(1, 1);
+    const targetCell = base.grid.cell(5, 1);
+    snapshot.hero.pos = heroCell;
+    snapshot.enemies[0]!.pos = targetCell;
+    snapshot.enemies[0]!.stats.hp = 1;
+
+    const w = GameWorld.fromSnapshot(snapshot, contentWithFastWeapon);
+    expect(w.rangedAttack(targetCell)).toBe(true);
+    expect(w.enemies.length).toBe(0);
+
+    const heroTurn = w.snapshot().queue.actors.find((actor) => actor.id === "hero");
+    expect(heroTurn?.time).toBeCloseTo(0.5);
+  });
+
+  it("rangedAttack refuses blocked lines without spending a turn", () => {
+    const base = new GameWorld("WORLD-RANGED-BLOCKED", contentWithFastWeapon, {
+      enemyCount: 1,
+    });
+    const snapshot = base.snapshot();
+    const level = snapshot.dungeon.levels[0]!;
+    level.terrain = level.terrain.map(() => Terrain.FLOOR);
+
+    const heroCell = base.grid.cell(1, 1);
+    const wallCell = base.grid.cell(3, 1);
+    const targetCell = base.grid.cell(5, 1);
+    level.terrain[wallCell] = Terrain.WALL;
+    snapshot.hero.pos = heroCell;
+    snapshot.enemies[0]!.pos = targetCell;
+
+    const w = GameWorld.fromSnapshot(snapshot, contentWithFastWeapon);
+    expect(w.rangedAttack(targetCell)).toBe(false);
+    expect(w.enemies.length).toBe(1);
+
+    const heroTurn = w.snapshot().queue.actors.find((actor) => actor.id === "hero");
+    expect(heroTurn?.time).toBe(0);
+    expect(w.log.at(-1)).toBe("No clear shot.");
   });
 
   it("fires onHeroDamaged with the correct payload when a monster lands a hit", () => {

@@ -384,7 +384,7 @@ export class GameOverlay {
     const title = document.createElement("strong");
     title.textContent = "Quickslot";
     const detail = document.createElement("span");
-    detail.textContent = "No item assigned";
+    detail.textContent = "Tap a target to fire";
     body.append(title, detail);
 
     frame.append(icon, body);
@@ -465,11 +465,11 @@ export class GameOverlay {
   }
 
   private toggleQuickslot(): void {
-    this.actions.quickslot();
     if (this.quickslotOpen) {
       this.closeModals();
       return;
     }
+    this.actions.quickslot();
     this.closeModals();
     this.quickslotOpen = true;
     this.renderQuickslot();
