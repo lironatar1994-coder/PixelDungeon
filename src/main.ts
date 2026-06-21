@@ -14,7 +14,12 @@ import "./style.css";
 import { EventBus } from "@/events/EventBus";
 import { GameLoop } from "@/core/GameLoop";
 import { Renderer } from "@/render/Renderer";
-import { drawMapScene, type MapView } from "@/render/MapScene";
+import {
+  clearCombatAnimations,
+  drawMapScene,
+  queueCombatStrikeAnimation,
+  type MapView,
+} from "@/render/MapScene";
 import { AssetLoader } from "@/render/AssetLoader";
 import {
   clampZoomMultiplier,
@@ -22,7 +27,11 @@ import {
   pixelToCell,
   MAP_TOP_INSET,
 } from "@/render/viewport";
-import { GameWorld, type HeroDamagedInfo } from "@/core/game/GameWorld";
+import {
+  GameWorld,
+  type CombatStrikeInfo,
+  type HeroDamagedInfo,
+} from "@/core/game/GameWorld";
 import type { Enemy } from "@/core/actors/Enemy";
 import { loadContentDatabase } from "@/core/data/loadContent";
 import { SaveManager } from "@/core/save/SaveManager";
@@ -67,12 +76,14 @@ async function boot(): Promise<void> {
   const publishLog = (line: string) => bus.emit("combat:log", { line });
   const autoSave = (changedWorld: GameWorld) => saveManager.save(changedWorld);
   const emitHeroDamaged = (info: HeroDamagedInfo) => bus.emit("hero:damaged", info);
+  const emitCombatStrike = (info: CombatStrikeInfo) => bus.emit("combat:strike", info);
   // One shared callback set so every GameWorld (new / loaded / restarted) is
   // wired to the same EventBus bridges.
   const worldCallbacks = {
     onChange: autoSave,
     onLog: publishLog,
     onHeroDamaged: emitHeroDamaged,
+    onCombatStrike: emitCombatStrike,
   };
 
   let appState: AppState = "MainMenu";
@@ -105,6 +116,7 @@ async function boot(): Promise<void> {
       exit: current.level.exit,
       heroPos: current.heroPos,
       enemies: current.enemies.map((e) => ({
+        id: `enemy:${e.seq}`,
         pos: e.pos,
         state: e.state,
         name: e.name,
@@ -179,6 +191,7 @@ async function boot(): Promise<void> {
     seed = nextSeed;
     selectedCell = null;
     targetingMode = null;
+    clearCombatAnimations();
     cancelAutoWalk();
 
     menu?.destroy();
@@ -530,6 +543,10 @@ async function boot(): Promise<void> {
 
   bus.on("ui:quickslot", () => {
     startTargetingMode("ranged");
+  });
+
+  bus.on("combat:strike", (event) => {
+    queueCombatStrikeAnimation(event);
   });
 
   bus.on("loop:frame", ({ dt }) => {

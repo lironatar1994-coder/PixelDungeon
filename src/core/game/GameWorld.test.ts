@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   GameWorld,
+  type CombatStrikeInfo,
   type WorldOptions,
   type HeroDamagedInfo,
 } from "@/core/game/GameWorld";
@@ -187,9 +188,21 @@ describe("GameWorld", () => {
     snapshot.enemies[0]!.pos = targetCell;
     snapshot.enemies[0]!.stats.hp = 1;
 
-    const w = GameWorld.fromSnapshot(snapshot, contentWithFastWeapon);
+    const strikes: CombatStrikeInfo[] = [];
+    const w = GameWorld.fromSnapshot(snapshot, contentWithFastWeapon, {
+      onCombatStrike: (info) => strikes.push(info),
+    });
     expect(w.rangedAttack(targetCell)).toBe(true);
     expect(w.enemies.length).toBe(0);
+    expect(strikes).toHaveLength(1);
+    expect(strikes[0]).toMatchObject({
+      attackerId: "hero",
+      attackerCell: heroCell,
+      defenderCell: targetCell,
+      hit: true,
+      damage: 1,
+    });
+    expect(strikes[0]!.defenderId).toMatch(/^enemy:/);
 
     const heroTurn = w.snapshot().queue.actors.find((actor) => actor.id === "hero");
     expect(heroTurn?.time).toBeCloseTo(0.5);

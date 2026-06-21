@@ -36,8 +36,48 @@ const COLORS = {
 };
 
 const IDLE_START_DELAY_SECONDS = 1.4;
+const STRIKE_DURATION_SECONDS = 0.15;
+const DAMAGE_POPUP_DURATION_SECONDS = 0.7;
 let previousActivitySignature: string | null = null;
 let lastActivityAt = 0;
+
+export interface CombatStrikeAnimationEvent {
+  attackerId: string;
+  defenderId: string;
+  attackerCell: number;
+  defenderCell: number;
+  hit: boolean;
+  damage: number;
+}
+
+interface CombatStrikeAnimation extends CombatStrikeAnimationEvent {
+  startedAt: number | null;
+}
+
+interface DamagePopup {
+  cell: number;
+  hit: boolean;
+  damage: number;
+  startedAt: number | null;
+}
+
+const activeStrikes: CombatStrikeAnimation[] = [];
+const activeDamagePopups: DamagePopup[] = [];
+
+export function queueCombatStrikeAnimation(event: CombatStrikeAnimationEvent): void {
+  activeStrikes.push({ ...event, startedAt: null });
+  activeDamagePopups.push({
+    cell: event.defenderCell,
+    hit: event.hit,
+    damage: event.damage,
+    startedAt: null,
+  });
+}
+
+export function clearCombatAnimations(): void {
+  activeStrikes.length = 0;
+  activeDamagePopups.length = 0;
+}
 
 export interface MapView {
   grid: Grid;
@@ -48,6 +88,7 @@ export interface MapView {
   exit: number;
   heroPos: number;
   enemies: ReadonlyArray<{
+    id: string;
     pos: number;
     state: EnemyState;
     name: string;
@@ -89,6 +130,7 @@ export function drawMapScene(
   );
   const ts = vp.tileSize;
   const idleElapsed = idleElapsedAfterStillness(frame.elapsed, view);
+  updateCombatAnimations(frame.elapsed);
   const minX = Math.max(0, Math.floor(-vp.offsetX / ts) - 1);
   const minY = Math.max(0, Math.floor(-vp.offsetY / ts) - 1);
   const maxX = Math.min(grid.width - 1, Math.ceil((frame.width - vp.offsetX) / ts) + 1);
@@ -158,7 +200,9 @@ export function drawMapScene(
       COLORS.enemyEdge,
       {
         elapsed: idleElapsed,
-        key: `${enemy.name}:${enemy.pos}`,
+        key: `${enemy.id}:${enemy.pos}`,
+        actorId: enemy.id,
+        frameElapsed: frame.elapsed,
       },
     );
   }
@@ -166,7 +210,11 @@ export function drawMapScene(
   drawCell(ctx, assets, vp, grid, view.heroPos, "hero", COLORS.hero, COLORS.heroEdge, {
     elapsed: idleElapsed,
     key: `hero:${view.heroPos}`,
+    actorId: "hero",
+    frameElapsed: frame.elapsed,
   });
+
+  drawDamagePopups(ctx, vp, grid, frame.elapsed);
 
   if (view.selectedCell !== null) {
     const sx = grid.xOf(view.selectedCell);
@@ -188,12 +236,15 @@ function drawCell(
   sprite: SpriteKey,
   fill: string,
   edge?: string,
-  idle?: IdleState,
+  motion?: ActorDrawMotion,
 ): void {
   const ts = vp.tileSize;
-  const x = vp.offsetX + grid.xOf(cell) * ts;
-  const y = vp.offsetY + grid.yOf(cell) * ts;
-  if (assets && drawSprite(ctx, assets, sprite, x, y, ts, 1, idle)) {
+  const strike = motion?.actorId
+    ? visualOffsetForActor(motion.actorId, grid, ts, motion.frameElapsed)
+    : { pixelOffsetX: 0, pixelOffsetY: 0 };
+  const x = vp.offsetX + grid.xOf(cell) * ts + strike.pixelOffsetX;
+  const y = vp.offsetY + grid.yOf(cell) * ts + strike.pixelOffsetY;
+  if (assets && drawSprite(ctx, assets, sprite, x, y, ts, 1, motion)) {
     return;
   }
 
@@ -239,6 +290,11 @@ function drawSprite(
 interface IdleState {
   elapsed: number;
   key: string;
+}
+
+interface ActorDrawMotion extends IdleState {
+  actorId?: string;
+  frameElapsed: number;
 }
 
 function isIdleAnimated(sprite: SpriteKey): boolean {
@@ -290,6 +346,94 @@ function idleElapsedAfterStillness(elapsed: number, view: MapView): number {
   }
 
   return Math.max(0, elapsed - lastActivityAt - IDLE_START_DELAY_SECONDS);
+}
+
+function updateCombatAnimations(elapsed: number): void {
+  for (const strike of activeStrikes) {
+    strike.startedAt ??= elapsed;
+  }
+  for (const popup of activeDamagePopups) {
+    popup.startedAt ??= elapsed;
+  }
+
+  removeExpired(activeStrikes, elapsed, STRIKE_DURATION_SECONDS);
+  removeExpired(activeDamagePopups, elapsed, DAMAGE_POPUP_DURATION_SECONDS);
+}
+
+function removeExpired<T extends { startedAt: number | null }>(
+  list: T[],
+  elapsed: number,
+  duration: number,
+): void {
+  for (let i = list.length - 1; i >= 0; i--) {
+    const startedAt = list[i]!.startedAt;
+    if (startedAt !== null && elapsed - startedAt >= duration) {
+      list.splice(i, 1);
+    }
+  }
+}
+
+function visualOffsetForActor(
+  actorId: string,
+  grid: Grid,
+  tileSize: number,
+  elapsed: number,
+): { pixelOffsetX: number; pixelOffsetY: number } {
+  let pixelOffsetX = 0;
+  let pixelOffsetY = 0;
+  for (const strike of activeStrikes) {
+    if (strike.attackerId !== actorId || strike.startedAt === null) continue;
+    const progress = Math.max(
+      0,
+      Math.min(1, (elapsed - strike.startedAt) / STRIKE_DURATION_SECONDS),
+    );
+    const lunge = progress < 0.42
+      ? easeOutCubic(progress / 0.42)
+      : 1 - easeOutCubic((progress - 0.42) / 0.58);
+    const dx = grid.xOf(strike.defenderCell) - grid.xOf(strike.attackerCell);
+    const dy = grid.yOf(strike.defenderCell) - grid.yOf(strike.attackerCell);
+    const len = Math.max(1, Math.hypot(dx, dy));
+    const reach = tileSize * 0.34 * lunge;
+    pixelOffsetX += (dx / len) * reach;
+    pixelOffsetY += (dy / len) * reach;
+  }
+  return { pixelOffsetX, pixelOffsetY };
+}
+
+function easeOutCubic(t: number): number {
+  const clamped = Math.max(0, Math.min(1, t));
+  return 1 - Math.pow(1 - clamped, 3);
+}
+
+function drawDamagePopups(
+  ctx: CanvasRenderingContext2D,
+  vp: VP,
+  grid: Grid,
+  elapsed: number,
+): void {
+  const ts = vp.tileSize;
+  for (const popup of activeDamagePopups) {
+    if (popup.startedAt === null) continue;
+    const progress = Math.max(
+      0,
+      Math.min(1, (elapsed - popup.startedAt) / DAMAGE_POPUP_DURATION_SECONDS),
+    );
+    const x = vp.offsetX + grid.xOf(popup.cell) * ts + ts / 2;
+    const y = vp.offsetY + grid.yOf(popup.cell) * ts + ts * 0.18 - progress * ts * 0.65;
+    const text = popup.hit ? String(popup.damage) : "MISS";
+
+    ctx.save();
+    ctx.globalAlpha = 1 - progress;
+    ctx.font = `${Math.max(12, Math.floor(ts * 0.42))}px "SPD Pixel", monospace`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.lineWidth = Math.max(2, ts * 0.05);
+    ctx.strokeStyle = "rgba(0, 0, 0, 0.9)";
+    ctx.fillStyle = popup.hit ? "#ffe36a" : "#e7eef8";
+    ctx.strokeText(text, x, y);
+    ctx.fillText(text, x, y);
+    ctx.restore();
+  }
 }
 
 function activitySignature(view: MapView): string {

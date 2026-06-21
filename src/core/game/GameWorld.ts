@@ -38,6 +38,15 @@ export interface HeroDamagedInfo {
   hp: number;
 }
 
+export interface CombatStrikeInfo {
+  attackerId: string;
+  defenderId: string;
+  attackerCell: number;
+  defenderCell: number;
+  hit: boolean;
+  damage: number;
+}
+
 export interface WorldOptions {
   /** How far the hero can see (the player's fog radius — not enemy content). */
   visionRadius?: number;
@@ -48,6 +57,8 @@ export interface WorldOptions {
   /** Fired when the hero takes damage. The orchestrator bridges this to the
    *  EventBus; Core stays decoupled from the browser/event layer (Pillar 1). */
   onHeroDamaged?: (info: HeroDamagedInfo) => void;
+  /** Fired after an attack roll resolves; render/UI bridge it to EventBus. */
+  onCombatStrike?: (info: CombatStrikeInfo) => void;
 }
 
 export interface EnemySnapshot {
@@ -108,6 +119,7 @@ export class GameWorld {
   private readonly onChange?: (world: GameWorld) => void;
   private readonly onLog?: (line: string) => void;
   private readonly onHeroDamaged?: (info: HeroDamagedInfo) => void;
+  private readonly onCombatStrike?: (info: CombatStrikeInfo) => void;
   private enemyAiRng = new RNG(0);
 
   private queue = new TurnQueue();
@@ -126,6 +138,7 @@ export class GameWorld {
     this.onChange = opts.onChange;
     this.onLog = opts.onLog;
     this.onHeroDamaged = opts.onHeroDamaged;
+    this.onCombatStrike = opts.onCombatStrike;
 
     this.createHero(); // the hero persists across floors
     this.enterFloor();
@@ -134,7 +147,7 @@ export class GameWorld {
   static fromSnapshot(
     snapshot: GameWorldSnapshot,
     content: ContentDatabaseType,
-    opts: Pick<WorldOptions, "onChange" | "onLog" | "onHeroDamaged"> = {},
+    opts: Pick<WorldOptions, "onChange" | "onLog" | "onHeroDamaged" | "onCombatStrike"> = {},
   ): GameWorld {
     const world = new GameWorld(snapshot.seed, content, {
       visionRadius: snapshot.visionRadius,
@@ -142,6 +155,7 @@ export class GameWorld {
       onChange: opts.onChange,
       onLog: opts.onLog,
       onHeroDamaged: opts.onHeroDamaged,
+      onCombatStrike: opts.onCombatStrike,
     });
     world.restore(snapshot);
     return world;
@@ -257,16 +271,36 @@ export class GameWorld {
     return this.enemyList.find((e) => e.pos === cell) ?? null;
   }
 
+  private enemyId(enemy: Enemy): string {
+    return `enemy:${enemy.seq}`;
+  }
+
   // --- combat resolution (world is the authority) ---
   private heroAttack(targetCell: number): void {
     const enemy = this.enemyAt(targetCell);
     if (!enemy) return;
     const r = resolveAttack(this.hero.stats, enemy.stats, this.combatRng);
     if (!r.hit) {
+      this.onCombatStrike?.({
+        attackerId: "hero",
+        defenderId: this.enemyId(enemy),
+        attackerCell: this.hero.pos,
+        defenderCell: enemy.pos,
+        hit: false,
+        damage: 0,
+      });
       this.pushLog(`You miss the ${enemy.name}.`);
       return;
     }
-    enemy.stats.takeDamage(r.damage);
+    const dealt = enemy.stats.takeDamage(r.damage);
+    this.onCombatStrike?.({
+      attackerId: "hero",
+      defenderId: this.enemyId(enemy),
+      attackerCell: this.hero.pos,
+      defenderCell: enemy.pos,
+      hit: true,
+      damage: dealt,
+    });
     this.pushLog(`You hit the ${enemy.name} for ${r.damage}.`);
     if (!enemy.stats.alive) {
       this.removeEnemy(enemy);
@@ -278,10 +312,26 @@ export class GameWorld {
     if (this.heroDead) return;
     const r = resolveAttack(attacker.stats, this.hero.stats, this.combatRng);
     if (!r.hit) {
+      this.onCombatStrike?.({
+        attackerId: this.enemyId(attacker),
+        defenderId: "hero",
+        attackerCell: attacker.pos,
+        defenderCell: this.hero.pos,
+        hit: false,
+        damage: 0,
+      });
       this.pushLog(`The ${attacker.name} misses you.`);
       return;
     }
     const dealt = this.hero.stats.takeDamage(r.damage);
+    this.onCombatStrike?.({
+      attackerId: this.enemyId(attacker),
+      defenderId: "hero",
+      attackerCell: attacker.pos,
+      defenderCell: this.hero.pos,
+      hit: true,
+      damage: dealt,
+    });
     this.pushLog(`The ${attacker.name} hits you for ${r.damage}.`);
     if (dealt > 0) {
       this.onHeroDamaged?.({

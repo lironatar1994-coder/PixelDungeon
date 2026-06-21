@@ -22,6 +22,14 @@ export interface GameEvents {
   /** A pointer consumed by a UI layer (the world must NOT react to it). */
   "input:ui": { layer: string; x: number; y: number };
   "combat:log": { line: string };
+  "combat:strike": {
+    attackerId: string;
+    defenderId: string;
+    attackerCell: number;
+    defenderCell: number;
+    hit: boolean;
+    damage: number;
+  };
   /** The hero just lost hit points (e.g. a monster landed a blow). */
   "hero:damaged": { amount: number; source: string; hp: number };
   /** UI command shell for future quickslot assignment/use behavior. */

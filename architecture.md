@@ -536,3 +536,32 @@ Verified with `tsc --noEmit` using the bundled Node runtime. A focused Vitest
 run for `lineOfFire.test.ts` and `GameWorld.test.ts` is still blocked by the
 managed sandbox before tests load because esbuild cannot read the parent
 directory while resolving `vite.config.ts`; no TypeScript errors were reported.
+
+### Phase 9.2 - Visual Combat Feedback COMPLETE
+Added combat punch without moving any game rules out of the pure core. The
+requested direct `EventBus` emission from `resolveAttack.ts` was intentionally
+implemented through the existing callback bridge instead: `resolveAttack`
+remains a deterministic, side-effect-free math function, while **`GameWorld`**
+([src/core/game/GameWorld.ts](src/core/game/GameWorld.ts)) raises
+`onCombatStrike` after each resolved attack with attacker ID, defender ID,
+source cell, target cell, hit/miss, and damage. **`main.ts`**
+([src/main.ts](src/main.ts)) bridges that pure callback to the typed
+`combat:strike` EventBus event.
+
+**`EventBus`** ([src/events/EventBus.ts](src/events/EventBus.ts)) now includes
+the `combat:strike` payload. **`MapScene`** ([src/render/MapScene.ts](src/render/MapScene.ts))
+subscribes through the composition root via `queueCombatStrikeAnimation`, stores
+render-only animation records, and computes temporary `pixelOffsetX` /
+`pixelOffsetY` values at draw time. Actor grid coordinates never change. The
+attacker lunges toward the defender direction for about `150ms` using an
+ease-out/ease-back tween, then returns to zero offset.
+
+`MapScene` also draws render-only floating combat text over the defender cell:
+yellow damage numbers for hits and pale `MISS` text for misses. These popups
+drift upward and fade over roughly `700ms`; they are not saved and do not touch
+core state.
+
+Verified with `tsc --noEmit` using the bundled Node runtime. A focused Vitest
+run for `GameWorld.test.ts` remains blocked by the managed sandbox before tests
+load because esbuild cannot read the parent directory while resolving
+`vite.config.ts`; no TypeScript errors were reported.
