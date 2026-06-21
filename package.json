@@ -1,0 +1,19 @@
+{
+  "name": "browser-roguelike",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "A deterministic, turn-based browser roguelike inspired by Shattered Pixel Dungeon.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "typescript": "~5.7.2",
+    "vite": "^6.0.7",
+    "vitest": "^2.1.8"
+  }
+}

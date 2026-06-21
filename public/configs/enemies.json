@@ -1,0 +1,47 @@
+[
+  {
+    "id": "rat",
+    "name": "Sewer Rat",
+    "maxHealth": 8,
+    "speed": 2,
+    "vision": 6,
+    "accuracy": 8,
+    "evasion": 8,
+    "damageMin": 1,
+    "damageMax": 3,
+    "armor": 0,
+    "spawnWeight": 4,
+    "minDepth": 1,
+    "description": "A quick, fragile scavenger. Fast and evasive but hits softly."
+  },
+  {
+    "id": "zombie",
+    "name": "Rotting Zombie",
+    "maxHealth": 25,
+    "speed": 0.5,
+    "vision": 4,
+    "accuracy": 12,
+    "evasion": 2,
+    "damageMin": 4,
+    "damageMax": 8,
+    "armor": 2,
+    "spawnWeight": 2,
+    "minDepth": 1,
+    "description": "A slow, relentless husk. Easy to dodge but armored and hits hard."
+  },
+  {
+    "id": "gnoll",
+    "name": "Gnoll Scout",
+    "maxHealth": 14,
+    "speed": 1,
+    "vision": 7,
+    "accuracy": 12,
+    "evasion": 6,
+    "damageMin": 2,
+    "damageMax": 5,
+    "armor": 1,
+    "spawnWeight": 3,
+    "minDepth": 2,
+    "description": "A balanced hunter with keen eyes; appears deeper in the dungeon."
+  }
+]

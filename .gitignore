@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+dist-ssr/
+
+# Vite / Vitest cache
+.vite/
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor / OS
+.DS_Store
+*.local
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Local Agent Configs & Temp Files
+.agents/
+.claude/
+.codex/
+.tmp-cdp-*
+

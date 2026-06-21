@@ -1,0 +1,205 @@
+import { Terrain } from "@/core/grid/terrain";
+import type { EnemyState } from "@/core/actors/Enemy";
+
+export type SpriteSheetKey =
+  | "tiles"
+  | "warrior"
+  | "rat"
+  | "undead"
+  | "items"
+  | "itemIcons"
+  | "toolbar"
+  | "interfaceIcons";
+
+export type SpriteKey =
+  | "floor"
+  | "wall"
+  | "door"
+  | "hero"
+  | "rat"
+  | "zombie"
+  | "heroPortrait"
+  | "entrance"
+  | "exit"
+  | "shortSword"
+  | "leatherArmor"
+  | "healingPotion"
+  | "ration"
+  | "uiInventory"
+  | "uiWait"
+  | "uiQuickslot"
+  | "uiHeroStats"
+  | "uiControls";
+
+export interface SpriteRect {
+  sheet: SpriteSheetKey;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface SpriteCssStyle {
+  backgroundImage: string;
+  backgroundPosition: string;
+  backgroundSize: string;
+  width: string;
+  height: string;
+}
+
+export interface SpriteSheetAssets {
+  readonly ready: boolean;
+  readonly tileSize: number;
+  canDraw(key: SpriteKey): boolean;
+  imageFor(key: SpriteKey): HTMLImageElement | null;
+  spriteForTerrain(terrain: Terrain): SpriteKey;
+  spriteForEnemy(enemy: { name: string; state: EnemyState }): SpriteKey;
+  spriteForItem(itemId: string): SpriteKey | null;
+  sourceRect(key: SpriteKey): SpriteRect;
+  cssStyleForSprite(key: SpriteKey, scale?: number): SpriteCssStyle | null;
+}
+
+const SHEET_URLS: Record<SpriteSheetKey, string> = {
+  tiles: "/assets/tiles_sewers.png",
+  warrior: "/assets/warrior.png",
+  rat: "/assets/rat.png",
+  undead: "/assets/undead.png",
+  items: "/assets/items.png",
+  itemIcons: "/assets/item_icons.png",
+  toolbar: "/assets/toolbar.png",
+  interfaceIcons: "/assets/icons.png",
+};
+
+function xy(x: number, y: number, width = 16): number {
+  return x - 1 + (y - 1) * width;
+}
+
+function sheetRect(sheet: SpriteSheetKey, index: number, tileSize: number, w = tileSize, h = tileSize): SpriteRect {
+  const columns = sheet === "itemIcons" ? 16 : 16;
+  return {
+    sheet,
+    x: (index % columns) * tileSize,
+    y: Math.floor(index / columns) * tileSize,
+    w,
+    h,
+  };
+}
+
+const SPRITES: Record<SpriteKey, SpriteRect> = {
+  // DungeonTileSheet.java: FLOOR=xy(1,1), ENTRANCE=GROUND+16, EXIT=GROUND+17.
+  floor: sheetRect("tiles", xy(1, 1), 16),
+  entrance: sheetRect("tiles", xy(1, 1) + 16, 16),
+  exit: sheetRect("tiles", xy(1, 1) + 17, 16),
+
+  // DungeonTileSheet.java: FLAT_WALLS=xy(1,4), FLAT_DOOR=FLAT_WALLS+8.
+  wall: sheetRect("tiles", xy(1, 4), 16),
+  door: sheetRect("tiles", xy(1, 4) + 8, 16),
+
+  // HeroSprite.java / RatSprite.java / UndeadSprite.java idle frame zero.
+  hero: { sheet: "warrior", x: 0, y: 0, w: 12, h: 15 },
+  // HeroSprite.avatar(...) crops the class sheet at x=1,y=0,w=12,h=15 for the base portrait.
+  heroPortrait: { sheet: "warrior", x: 1, y: 0, w: 12, h: 15 },
+  rat: { sheet: "rat", x: 0, y: 0, w: 16, h: 15 },
+  zombie: { sheet: "undead", x: 0, y: 0, w: 12, h: 16 },
+
+  // ItemSpriteSheet.java atlas coordinates.
+  shortSword: sheetRect("items", xy(9, 7), 16, 13, 13),
+  leatherArmor: sheetRect("items", xy(1, 12) + 1, 16, 14, 13),
+  ration: sheetRect("items", xy(1, 28) + 5, 16, 16, 12),
+
+  // PotionOfHealing.java uses ItemSpriteSheet.Icons.POTION_HEALING.
+  healingPotion: sheetRect("itemIcons", xy(1, 6) + 1, 8, 6, 7),
+
+  // Toolbar.java: btnInventory.icon(160,0,16,16), btnWait.icon(176,0,16,16).
+  uiInventory: { sheet: "toolbar", x: 160, y: 0, w: 16, h: 16 },
+  uiWait: { sheet: "toolbar", x: 176, y: 0, w: 16, h: 16 },
+  // Toolbar.java quickslot frame: left slot frame(86,0,20,24); item assignment arrives later.
+  uiQuickslot: { sheet: "toolbar", x: 86, y: 0, w: 20, h: 24 },
+
+  // Icons.java: STATS=(128,16,16,13), KEYBOARD=(112,16,15,12).
+  uiHeroStats: { sheet: "interfaceIcons", x: 128, y: 16, w: 16, h: 13 },
+  uiControls: { sheet: "interfaceIcons", x: 112, y: 16, w: 15, h: 12 },
+};
+
+const ITEM_SPRITES: Record<string, SpriteKey> = {
+  short_sword: "shortSword",
+  leather_armor: "leatherArmor",
+  potion_healing: "healingPotion",
+  ration: "ration",
+};
+
+export class AssetLoader implements SpriteSheetAssets {
+  readonly tileSize = 16;
+  private readonly images = new Map<SpriteSheetKey, HTMLImageElement>();
+
+  get ready(): boolean {
+    return this.images.size > 0;
+  }
+
+  async loadDefaultSheets(): Promise<boolean> {
+    const results = await Promise.all(
+      Object.entries(SHEET_URLS).map(async ([sheet, url]) => [
+        sheet as SpriteSheetKey,
+        await this.loadSheet(sheet as SpriteSheetKey, url),
+      ]),
+    );
+    return results.some(([, loaded]) => loaded);
+  }
+
+  async loadSheet(sheet: SpriteSheetKey, url: string): Promise<boolean> {
+    const image = new Image();
+    image.decoding = "async";
+    image.src = url;
+
+    try {
+      await image.decode();
+      this.images.set(sheet, image);
+      return true;
+    } catch (err) {
+      console.warn(`[assets] ${sheet} sheet unavailable at ${url}; using fallback for those sprites.`, err);
+      this.images.delete(sheet);
+      return false;
+    }
+  }
+
+  canDraw(key: SpriteKey): boolean {
+    return this.images.has(SPRITES[key].sheet);
+  }
+
+  imageFor(key: SpriteKey): HTMLImageElement | null {
+    return this.images.get(SPRITES[key].sheet) ?? null;
+  }
+
+  spriteForTerrain(terrain: Terrain): SpriteKey {
+    if (terrain === Terrain.FLOOR) return "floor";
+    if (terrain === Terrain.DOOR) return "door";
+    return "wall";
+  }
+
+  spriteForEnemy(enemy: { name: string; state: EnemyState }): SpriteKey {
+    const name = enemy.name.toLowerCase();
+    if (name.includes("zombie") || name.includes("undead")) return "zombie";
+    return "rat";
+  }
+
+  spriteForItem(itemId: string): SpriteKey | null {
+    return ITEM_SPRITES[itemId] ?? null;
+  }
+
+  sourceRect(key: SpriteKey): SpriteRect {
+    return SPRITES[key];
+  }
+
+  cssStyleForSprite(key: SpriteKey, scale = 2): SpriteCssStyle | null {
+    const image = this.imageFor(key);
+    if (!image) return null;
+    const src = this.sourceRect(key);
+    return {
+      backgroundImage: `url("${image.src}")`,
+      backgroundPosition: `-${src.x * scale}px -${src.y * scale}px`,
+      backgroundSize: `${image.naturalWidth * scale}px ${image.naturalHeight * scale}px`,
+      width: `${src.w * scale}px`,
+      height: `${src.h * scale}px`,
+    };
+  }
+}

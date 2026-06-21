@@ -1,0 +1,70 @@
+/**
+ * viewport.ts - pure screen<->tile math shared by the renderer and input.
+ *
+ * The map is drawn through a hero-centered camera. Both MapScene (drawing) and
+ * main.ts (tap-to-cell conversion) use the same camera viewport so pan/zoom
+ * cannot drift between rendering and input.
+ */
+import type { Grid } from "@/core/grid/Grid";
+
+/** Top strip that should keep swallowing taps for the floating HP/depth HUD. */
+export const MAP_TOP_INSET = 88;
+const BASE_TILE_SIZE = 16;
+const MIN_READABLE_TILE_SIZE = 32;
+const MAX_TILE_SIZE = 56;
+const TARGET_VISIBLE_TILES_PORTRAIT = 11;
+const TARGET_VISIBLE_TILES_LANDSCAPE = 15;
+
+export interface Viewport {
+  tileSize: number;
+  offsetX: number;
+  offsetY: number;
+  scale: number;
+}
+
+/**
+ * Create a hero-centered camera. Offsets are clamped so map edges do not drift
+ * away from the viewport when the hero is near a boundary.
+ */
+export function computeCameraViewport(
+  viewW: number,
+  viewH: number,
+  grid: Grid,
+  focusCell: number,
+): Viewport {
+  const targetTiles =
+    viewW >= viewH ? TARGET_VISIBLE_TILES_LANDSCAPE : TARGET_VISIBLE_TILES_PORTRAIT;
+  const tileSize = Math.max(
+    MIN_READABLE_TILE_SIZE,
+    Math.min(MAX_TILE_SIZE, Math.floor(Math.min(viewW, viewH) / targetTiles)),
+  );
+  const scale = tileSize / BASE_TILE_SIZE;
+  const focusX = grid.xOf(focusCell) + 0.5;
+  const focusY = grid.yOf(focusCell) + 0.5;
+  const mapW = grid.width * tileSize;
+  const mapH = grid.height * tileSize;
+  const idealX = Math.floor(viewW / 2 - focusX * tileSize);
+  const idealY = Math.floor(viewH / 2 - focusY * tileSize);
+  const offsetX = clampOffset(idealX, viewW, mapW);
+  const offsetY = clampOffset(idealY, viewH, mapH);
+
+  return { tileSize, offsetX, offsetY, scale };
+}
+
+/** Convert a pixel position into a grid cell, or null if it's off the map. */
+export function pixelToCell(
+  vp: Viewport,
+  grid: Grid,
+  px: number,
+  py: number,
+): number | null {
+  const x = Math.floor((px - vp.offsetX) / vp.tileSize);
+  const y = Math.floor((py - vp.offsetY) / vp.tileSize);
+  if (!grid.inBounds(x, y)) return null;
+  return grid.cell(x, y);
+}
+
+function clampOffset(offset: number, viewSize: number, mapSize: number): number {
+  if (mapSize <= viewSize) return Math.floor((viewSize - mapSize) / 2);
+  return Math.max(viewSize - mapSize, Math.min(0, offset));
+}

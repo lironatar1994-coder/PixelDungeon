@@ -1,0 +1,33 @@
+[
+  {
+    "id": "short_sword",
+    "name": "Short Sword",
+    "type": "weapon",
+    "tier": 1,
+    "damageMin": 2,
+    "damageMax": 6,
+    "description": "A reliable starter blade."
+  },
+  {
+    "id": "leather_armor",
+    "name": "Leather Armor",
+    "type": "armor",
+    "tier": 1,
+    "defense": 2,
+    "description": "Light protection that won't slow you down."
+  },
+  {
+    "id": "potion_healing",
+    "name": "Potion of Healing",
+    "type": "potion",
+    "heal": 15,
+    "description": "Restores a chunk of health when quaffed."
+  },
+  {
+    "id": "ration",
+    "name": "Ration of Food",
+    "type": "food",
+    "nutrition": 300,
+    "description": "Staves off starvation on long delves."
+  }
+]
