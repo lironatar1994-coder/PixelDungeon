@@ -43,6 +43,11 @@ export class InputManager {
   }
 
   private onPointerDown = (e: PointerEvent): void => {
+    if (e.pointerType === "touch" && !e.isPrimary) {
+      e.preventDefault();
+      return;
+    }
+
     const point = this.toLocal(e);
     const consumedBy = this.router.route(point);
 

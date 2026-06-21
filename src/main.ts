@@ -16,7 +16,12 @@ import { GameLoop } from "@/core/GameLoop";
 import { Renderer } from "@/render/Renderer";
 import { drawMapScene, type MapView } from "@/render/MapScene";
 import { AssetLoader } from "@/render/AssetLoader";
-import { computeCameraViewport, pixelToCell, MAP_TOP_INSET } from "@/render/viewport";
+import {
+  clampZoomMultiplier,
+  computeCameraViewport,
+  pixelToCell,
+  MAP_TOP_INSET,
+} from "@/render/viewport";
 import { GameWorld, type HeroDamagedInfo } from "@/core/game/GameWorld";
 import type { Enemy } from "@/core/actors/Enemy";
 import { loadContentDatabase } from "@/core/data/loadContent";
@@ -30,6 +35,8 @@ import { MainMenu } from "@/ui/MainMenu";
 
 type AppState = "MainMenu" | "Playing";
 const AUTO_WALK_STEP_SECONDS = 0.08;
+const WHEEL_ZOOM_STEP = 0.0015;
+const PINCH_ZOOM_SENSITIVITY = 1;
 
 function createRunSeed(): string {
   const random = new Uint32Array(2);
@@ -76,6 +83,8 @@ async function boot(): Promise<void> {
   // when null, travel follows `autoPath` to an empty tile.
   let autoTarget: Enemy | null = null;
   let autoWalkElapsed = 0;
+  let zoomMultiplier = 1;
+  let pinchDistance: number | null = null;
   let menu: MainMenu | null = null;
   let overlay: GameOverlay | null = null;
 
@@ -416,6 +425,7 @@ async function boot(): Promise<void> {
       window.innerHeight,
       current.grid,
       current.heroPos,
+      zoomMultiplier,
     );
     const cell = pixelToCell(vp, current.grid, x, y);
     selectedCell = cell;
@@ -444,6 +454,52 @@ async function boot(): Promise<void> {
       case "none":
         break;
     }
+  });
+
+  canvas.addEventListener(
+    "wheel",
+    (e) => {
+      if (appState !== "Playing") return;
+      e.preventDefault();
+      const delta = -e.deltaY * WHEEL_ZOOM_STEP;
+      zoomMultiplier = clampZoomMultiplier(zoomMultiplier * (1 + delta));
+    },
+    { passive: false },
+  );
+
+  canvas.addEventListener(
+    "touchstart",
+    (e) => {
+      if (e.touches.length === 2) {
+        pinchDistance = touchDistance(e.touches[0]!, e.touches[1]!);
+      } else {
+        pinchDistance = null;
+      }
+    },
+    { passive: false },
+  );
+
+  canvas.addEventListener(
+    "touchmove",
+    (e) => {
+      if (appState !== "Playing" || e.touches.length !== 2) return;
+      e.preventDefault();
+      const nextDistance = touchDistance(e.touches[0]!, e.touches[1]!);
+      if (pinchDistance !== null && pinchDistance > 0) {
+        const ratio = nextDistance / pinchDistance;
+        zoomMultiplier = clampZoomMultiplier(
+          zoomMultiplier * (1 + (ratio - 1) * PINCH_ZOOM_SENSITIVITY),
+        );
+      }
+      pinchDistance = nextDistance;
+    },
+    { passive: false },
+  );
+
+  canvas.addEventListener("touchend", (e) => {
+    pinchDistance = e.touches.length === 2
+      ? touchDistance(e.touches[0]!, e.touches[1]!)
+      : null;
   });
 
   // The hero taking a hit interrupts travel immediately (event-driven, so the
@@ -516,7 +572,7 @@ async function boot(): Promise<void> {
       ctx.fillRect(0, 0, frame.width, frame.height);
       return;
     }
-    drawMapScene(ctx, frame, view(), assets);
+    drawMapScene(ctx, frame, view(), assets, zoomMultiplier);
   });
 
   const loop = new GameLoop({ bus });
@@ -528,6 +584,10 @@ async function boot(): Promise<void> {
 function requireWorld(world: GameWorld | null): GameWorld {
   if (!world) throw new Error("GameWorld is not mounted.");
   return world;
+}
+
+function touchDistance(a: Touch, b: Touch): number {
+  return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
 }
 
 void boot();

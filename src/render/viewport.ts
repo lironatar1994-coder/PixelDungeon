@@ -14,6 +14,8 @@ const MIN_READABLE_TILE_SIZE = 32;
 const MAX_TILE_SIZE = 56;
 const TARGET_VISIBLE_TILES_PORTRAIT = 11;
 const TARGET_VISIBLE_TILES_LANDSCAPE = 15;
+export const MIN_ZOOM_MULTIPLIER = 0.5;
+export const MAX_ZOOM_MULTIPLIER = 3;
 
 export interface Viewport {
   tileSize: number;
@@ -31,13 +33,16 @@ export function computeCameraViewport(
   viewH: number,
   grid: Grid,
   focusCell: number,
+  zoomMultiplier = 1,
 ): Viewport {
+  const zoom = clampZoomMultiplier(zoomMultiplier);
   const targetTiles =
     viewW >= viewH ? TARGET_VISIBLE_TILES_LANDSCAPE : TARGET_VISIBLE_TILES_PORTRAIT;
-  const tileSize = Math.max(
+  const baseTileSize = Math.max(
     MIN_READABLE_TILE_SIZE,
     Math.min(MAX_TILE_SIZE, Math.floor(Math.min(viewW, viewH) / targetTiles)),
   );
+  const tileSize = Math.max(1, Math.floor(baseTileSize * zoom));
   const scale = tileSize / BASE_TILE_SIZE;
   const focusX = grid.xOf(focusCell) + 0.5;
   const focusY = grid.yOf(focusCell) + 0.5;
@@ -49,6 +54,11 @@ export function computeCameraViewport(
   const offsetY = clampOffset(idealY, viewH, mapH);
 
   return { tileSize, offsetX, offsetY, scale };
+}
+
+export function clampZoomMultiplier(value: number): number {
+  if (!Number.isFinite(value)) return 1;
+  return Math.max(MIN_ZOOM_MULTIPLIER, Math.min(MAX_ZOOM_MULTIPLIER, value));
 }
 
 /** Convert a pixel position into a grid cell, or null if it's off the map. */

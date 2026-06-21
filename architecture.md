@@ -428,5 +428,26 @@ and Vite build are currently blocked by the managed sandbox because the local
 Node/NVM path and esbuild parent-directory probing are outside the permitted
 filesystem roots; no TypeScript errors were reported.
 
+### Phase 7.3 - Viewport Zoom & Idle Animations COMPLETE
+Added independent dungeon zoom and real-time idle animation without touching
+`src/core/`. **`viewport.ts`** ([src/render/viewport.ts](src/render/viewport.ts))
+now accepts a clamped `zoomMultiplier` (`0.5x` to `3x`) in
+`computeCameraViewport`; both `MapScene` drawing and `main.ts` tap-to-cell
+conversion use that same multiplier, so zoomed rendering and input coordinates
+stay aligned.
+
+**`main.ts`** ([src/main.ts](src/main.ts)) owns the browser gesture state:
+mouse wheel changes the camera multiplier on desktop, and two-finger
+`touchstart`/`touchmove` adjusts it for pinch zoom on mobile. The DOM overlay is
+not scaled. **`MapScene`** ([src/render/MapScene.ts](src/render/MapScene.ts))
+uses the render frame's elapsed time to alternate hero/rat/zombie idle sprites
+every 500ms. The frame offsets follow the SPD Java reference: `HeroSprite`
+uses `12x15`, `RatSprite` uses `16x15`, and `UndeadSprite` uses `12x16`, so
+frame 1 is the same source rectangle shifted right by one frame width.
+
+Verified with `tsc --noEmit` using the bundled Node runtime. The managed
+sandbox still blocks full Vite/Vitest execution because esbuild attempts to
+inspect parent directories outside the permitted filesystem roots.
+
 **Next:** Continue Phase 7 UI polish: inventory item rows, modal spacing, and
 status pane fidelity.

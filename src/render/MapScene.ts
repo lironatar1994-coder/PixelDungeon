@@ -73,10 +73,18 @@ export function drawMapScene(
   frame: FrameInfo,
   view: MapView,
   assets?: SpriteSheetAssets,
+  zoomMultiplier = 1,
 ): void {
   const { grid } = view;
-  const vp = computeCameraViewport(frame.width, frame.height, grid, view.heroPos);
+  const vp = computeCameraViewport(
+    frame.width,
+    frame.height,
+    grid,
+    view.heroPos,
+    zoomMultiplier,
+  );
   const ts = vp.tileSize;
+  const idleFrame = Math.floor(frame.elapsed / 0.5) % 2;
   const minX = Math.max(0, Math.floor(-vp.offsetX / ts) - 1);
   const minY = Math.max(0, Math.floor(-vp.offsetY / ts) - 1);
   const maxX = Math.min(grid.width - 1, Math.ceil((frame.width - vp.offsetX) / ts) + 1);
@@ -144,10 +152,11 @@ export function drawMapScene(
       assets?.spriteForEnemy(enemy) ?? "rat",
       enemy.state === "hunt" ? COLORS.enemyHunt : COLORS.enemyWander,
       COLORS.enemyEdge,
+      idleFrame,
     );
   }
 
-  drawCell(ctx, assets, vp, grid, view.heroPos, "hero", COLORS.hero, COLORS.heroEdge);
+  drawCell(ctx, assets, vp, grid, view.heroPos, "hero", COLORS.hero, COLORS.heroEdge, idleFrame);
 
   if (view.selectedCell !== null) {
     const sx = grid.xOf(view.selectedCell);
@@ -169,11 +178,12 @@ function drawCell(
   sprite: SpriteKey,
   fill: string,
   edge?: string,
+  idleFrame = 0,
 ): void {
   const ts = vp.tileSize;
   const x = vp.offsetX + grid.xOf(cell) * ts;
   const y = vp.offsetY + grid.yOf(cell) * ts;
-  if (assets && drawSprite(ctx, assets, sprite, x, y, ts, 1)) {
+  if (assets && drawSprite(ctx, assets, sprite, x, y, ts, 1, idleFrame)) {
     return;
   }
 
@@ -189,16 +199,26 @@ function drawSprite(
   y: number,
   size: number,
   alpha: number,
+  idleFrame = 0,
 ): boolean {
   const image = assets.imageFor(sprite);
   if (!image) return false;
-  const src = assets.sourceRect(sprite);
+  const src = idleSourceRect(sprite, assets.sourceRect(sprite), idleFrame);
   ctx.save();
   ctx.globalAlpha = alpha;
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(image, src.x, src.y, src.w, src.h, x, y, size, size);
   ctx.restore();
   return true;
+}
+
+function idleSourceRect(sprite: SpriteKey, src: ReturnType<SpriteSheetAssets["sourceRect"]>, idleFrame: number) {
+  if (idleFrame === 0 || !isIdleAnimated(sprite)) return src;
+  return { ...src, x: src.x + src.w };
+}
+
+function isIdleAnimated(sprite: SpriteKey): boolean {
+  return sprite === "hero" || sprite === "rat" || sprite === "zombie";
 }
 
 function drawSquare(

@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { Grid } from "@/core/grid/Grid";
-import { computeCameraViewport, pixelToCell } from "@/render/viewport";
+import {
+  computeCameraViewport,
+  MAX_ZOOM_MULTIPLIER,
+  MIN_ZOOM_MULTIPLIER,
+  pixelToCell,
+} from "@/render/viewport";
 
 describe("camera viewport", () => {
   it("centers the camera on the focus cell when away from edges", () => {
@@ -49,5 +54,19 @@ describe("camera viewport", () => {
     const grid = new Grid(60, 60);
     const vp = computeCameraViewport(800, 600, grid, grid.cell(0, 0));
     expect(pixelToCell(vp, grid, vp.offsetX - 50, vp.offsetY - 50)).toBeNull();
+  });
+
+  it("applies a clamped zoom multiplier while preserving screen-to-grid math", () => {
+    const grid = new Grid(60, 60);
+    const focus = grid.cell(30, 30);
+    const base = computeCameraViewport(800, 600, grid, focus);
+    const zoomed = computeCameraViewport(800, 600, grid, focus, 2);
+    const min = computeCameraViewport(800, 600, grid, focus, -10);
+    const max = computeCameraViewport(800, 600, grid, focus, 99);
+
+    expect(zoomed.tileSize).toBe(base.tileSize * 2);
+    expect(min.tileSize).toBe(Math.floor(base.tileSize * MIN_ZOOM_MULTIPLIER));
+    expect(max.tileSize).toBe(base.tileSize * MAX_ZOOM_MULTIPLIER);
+    expect(pixelToCell(zoomed, grid, 400, 300)).toBe(focus);
   });
 });
