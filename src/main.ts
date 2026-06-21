@@ -44,7 +44,7 @@ async function boot(): Promise<void> {
   }
 
   const bus = new EventBus();
-  const content = await loadContentDatabase();
+  const content = await loadContentDatabase(`${import.meta.env.BASE_URL}configs`);
   console.info(
     `[content] loaded ${content.allEnemies.length} enemy types, ${content.allItems.length} item types`,
   );

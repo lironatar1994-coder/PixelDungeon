@@ -59,15 +59,17 @@ export interface SpriteSheetAssets {
   cssStyleForSprite(key: SpriteKey, scale?: number): SpriteCssStyle | null;
 }
 
+const BASE = import.meta.env.BASE_URL;
+
 const SHEET_URLS: Record<SpriteSheetKey, string> = {
-  tiles: "/assets/tiles_sewers.png",
-  warrior: "/assets/warrior.png",
-  rat: "/assets/rat.png",
-  undead: "/assets/undead.png",
-  items: "/assets/items.png",
-  itemIcons: "/assets/item_icons.png",
-  toolbar: "/assets/toolbar.png",
-  interfaceIcons: "/assets/icons.png",
+  tiles: `${BASE}assets/tiles_sewers.png`,
+  warrior: `${BASE}assets/warrior.png`,
+  rat: `${BASE}assets/rat.png`,
+  undead: `${BASE}assets/undead.png`,
+  items: `${BASE}assets/items.png`,
+  itemIcons: `${BASE}assets/item_icons.png`,
+  toolbar: `${BASE}assets/toolbar.png`,
+  interfaceIcons: `${BASE}assets/icons.png`,
 };
 
 function xy(x: number, y: number, width = 16): number {

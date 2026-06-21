@@ -1,14 +1,14 @@
 @font-face {
   font-family: "SPD Pixel";
-  src: url("/assets/pixel_font.ttf") format("truetype");
+  src: url("../public/assets/pixel_font.ttf") format("truetype");
   font-display: swap;
 }
 
 :root {
-  --spd-window-frame: url("/assets/chrome_window.png");
-  --spd-button-frame: url("/assets/chrome_button_toast.png");
-  --spd-button-frame-grey: url("/assets/chrome_button_grey.png");
-  --spd-button-frame-red: url("/assets/chrome_button_red.png");
+  --spd-window-frame: url("../public/assets/chrome_window.png");
+  --spd-button-frame: url("../public/assets/chrome_button_toast.png");
+  --spd-button-frame-grey: url("../public/assets/chrome_button_grey.png");
+  --spd-button-frame-red: url("../public/assets/chrome_button_red.png");
   --action-size: 56px;
   --action-gap: 8px;
 }
