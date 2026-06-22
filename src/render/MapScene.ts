@@ -174,10 +174,21 @@ export function drawMapScene(
             (wTerrain === Terrain.WALL || wTerrain === Terrain.DOOR) &&
             (eTerrain === Terrain.WALL || eTerrain === Terrain.DOOR);
           
+          const isOpen = view.openDoors.has(cell);
+          const flatKey = isOpen ? "doorFlatOpen" : "doorFlat";
+
+          // Draw the flat floor/frame base layer first
+          const flatRect = assets.sourceRect(flatKey, view.depth);
+          const img = assets.imageFor(flatKey, view.depth);
+          if (img && flatRect) {
+            ctx.drawImage(img, flatRect.x, flatRect.y, flatRect.w, flatRect.h, vp.offsetX + x * ts, vp.offsetY + y * ts, ts, ts);
+          }
+          
+          // Now set the raised perspective sprite to be drawn on top
           if (isHorizontalWall) {
-            spriteKey = view.openDoors.has(cell) ? "doorOpenH" : "doorClosedH";
+            spriteKey = isOpen ? "doorFrontOpen" : "doorFront";
           } else {
-            spriteKey = view.openDoors.has(cell) ? "doorOpenV" : "doorClosedV";
+            spriteKey = "doorSide"; // Sideways door doesn't have a distinct "open" raised sprite
           }
         } else if (terrain === Terrain.FLOOR) {
           const variant = view.floorVariants.get(cell);
