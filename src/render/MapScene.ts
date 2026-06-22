@@ -99,6 +99,8 @@ export interface MapView {
     cell: number;
     itemId: string;
   }>;
+  openDoors: ReadonlySet<number>;
+  floorVariants: ReadonlyMap<number, number>;
   visible: ReadonlySet<number>;
   explored: ReadonlySet<number>;
   selectedCell: number | null;
@@ -155,17 +157,40 @@ export function drawMapScene(
       ctx.fillRect(vp.offsetX + x * ts, vp.offsetY + y * ts, ts, ts);
 
       if (assets && terrain !== Terrain.EMPTY && explored) {
+        let spriteKey = assets.spriteForTerrain(terrain, view.depth);
+        if (terrain === Terrain.WALL) {
+          const southCell = grid.cell(x, y + 1);
+          if (grid.inBounds(x, y + 1)) {
+            const southTerrain = grid.get(southCell);
+            if (southTerrain === Terrain.WALL) spriteKey = "wallTop";
+            else spriteKey = "wallFront";
+          } else {
+            spriteKey = "wallFront";
+          }
+        } else if (terrain === Terrain.DOOR) {
+          spriteKey = view.openDoors.has(cell) ? "doorOpen" : "doorClosed";
+        } else if (terrain === Terrain.FLOOR) {
+          const variant = view.floorVariants.get(cell);
+          if (variant === 1) spriteKey = "floor1";
+          else if (variant === 2) spriteKey = "floor2";
+        }
+
         drawSprite(
           ctx,
           assets,
-          assets.spriteForTerrain(terrain, view.depth),
+          spriteKey,
           vp.offsetX + x * ts,
           vp.offsetY + y * ts,
           ts,
-          visible ? 1 : 0.35,
+          1,
           undefined,
           view.depth,
         );
+
+        if (!visible) {
+          ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+          ctx.fillRect(vp.offsetX + x * ts, vp.offsetY + y * ts, ts, ts);
+        }
       }
     }
   }

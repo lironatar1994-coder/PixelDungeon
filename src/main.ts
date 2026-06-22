@@ -136,6 +136,8 @@ async function boot(): Promise<void> {
         maxHealth: e.maxHealth,
       })),
       groundItems: current.level.groundItems,
+      openDoors: current.level.openDoors,
+      floorVariants: current.level.floorVariants,
       visible: current.fov.visible,
       explored: current.fov.exploredMemory,
       selectedCell,

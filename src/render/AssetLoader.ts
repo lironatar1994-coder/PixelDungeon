@@ -18,8 +18,12 @@ export type SpriteSheetKey =
 
 export type SpriteKey =
   | "floor"
-  | "wall"
-  | "door"
+  | "floor1"
+  | "floor2"
+  | "wallTop"
+  | "wallFront"
+  | "doorClosed"
+  | "doorOpen"
   | "hero"
   | "mageHero"
   | "rat"
@@ -101,14 +105,18 @@ function sheetRect(sheet: SpriteSheetKey, index: number, tileSize: number, w = t
 }
 
 const SPRITES: Record<SpriteKey, SpriteRect> = {
-  // DungeonTileSheet.java: FLOOR=xy(1,1), ENTRANCE=GROUND+16, EXIT=GROUND+17.
-  floor: sheetRect("tiles", xy(1, 1), 16),
+  // Base floors (explicit coordinates as requested)
+  floor: { sheet: "tiles", x: 0, y: 0, w: 16, h: 16 },
+  floor1: { sheet: "tiles", x: 16, y: 0, w: 16, h: 16 },
+  floor2: { sheet: "tiles", x: 32, y: 0, w: 16, h: 16 },
   entrance: sheetRect("tiles", xy(1, 1) + 16, 16),
   exit: sheetRect("tiles", xy(1, 1) + 17, 16),
 
-  // DungeonTileSheet.java: FLAT_WALLS=xy(1,4), FLAT_DOOR=FLAT_WALLS+8.
-  wall: sheetRect("tiles", xy(1, 4), 16),
-  door: sheetRect("tiles", xy(1, 4) + 8, 16),
+  // Walls & Doors (explicit coordinates)
+  wallTop: { sheet: "tiles", x: 0, y: 48, w: 16, h: 16 },
+  wallFront: { sheet: "tiles", x: 0, y: 64, w: 16, h: 16 },
+  doorClosed: { sheet: "tiles", x: 128, y: 48, w: 16, h: 16 },
+  doorOpen: { sheet: "tiles", x: 144, y: 48, w: 16, h: 16 },
 
   // HeroSprite.java / RatSprite.java / UndeadSprite.java idle frame zero.
   hero: { sheet: "warrior", x: 0, y: 0, w: 12, h: 15 },
@@ -192,8 +200,8 @@ export class AssetLoader implements SpriteSheetAssets {
 
   spriteForTerrain(terrain: Terrain, _depth = 1): SpriteKey {
     if (terrain === Terrain.FLOOR) return "floor";
-    if (terrain === Terrain.DOOR) return "door";
-    return "wall";
+    if (terrain === Terrain.DOOR) return "doorClosed";
+    return "wallTop";
   }
 
   spriteForEnemy(enemy: { name: string; state: EnemyState }): SpriteKey {
@@ -229,7 +237,10 @@ export class AssetLoader implements SpriteSheetAssets {
 }
 
 function isTerrainSprite(key: SpriteKey): boolean {
-  return key === "floor" || key === "wall" || key === "door" || key === "entrance" || key === "exit";
+  return key === "floor" || key === "floor1" || key === "floor2" || 
+         key === "wallTop" || key === "wallFront" ||
+         key === "doorClosed" || key === "doorOpen" || 
+         key === "entrance" || key === "exit";
 }
 
 function tileSheetForDepth(depth: number): SpriteSheetKey {

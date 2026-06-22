@@ -550,8 +550,21 @@ export class GameWorld {
   private processTurns(): void {
     this.queue.run();
     this.queue.fixTime();
+    this.checkOpenDoors();
     this.recomputeFOV();
     this.emitChange();
+  }
+
+  private checkOpenDoors(): void {
+    const grid = this.grid;
+    for (const actor of [this.hero, ...this.enemyList]) {
+      if (grid.get(actor.pos) === Terrain.DOOR && !this.level.openDoors.has(actor.pos)) {
+        this.level.openDoors.add(actor.pos);
+        if (actor === this.hero) {
+          this.pushLog("You open the door.");
+        }
+      }
+    }
   }
 
   private pickUpHere(): void {

@@ -108,6 +108,7 @@ export class DungeonManager {
         entrance: generated.entrance,
         exit: generated.exit,
         groundItems: generated.groundItems,
+        floorVariants: generated.floorVariants,
       });
       this.levels[depth] = level;
     }

@@ -31,6 +31,7 @@ export interface GeneratedLevel {
   entrance: number;
   exit: number;
   groundItems: GroundItem[];
+  floorVariants: Map<number, number>;
 }
 
 export interface LootGenerationOptions {
@@ -50,6 +51,7 @@ export function generateLevel(
   loot: LootGenerationOptions = {},
 ): GeneratedLevel {
   const grid = new Grid(width, height, Terrain.WALL);
+  const floorVariants = new Map<number, number>();
 
   // Partition only the interior so the outer ring always stays solid wall.
   const area = new Rect(1, 1, width - 2, height - 2);
@@ -66,6 +68,7 @@ export function generateLevel(
       for (let x = room.x; x < room.right; x++) {
         const cell = grid.cell(x, y);
         grid.set(cell, Terrain.FLOOR);
+        floorVariants.set(cell, rng.pick([0, 1, 2]));
         roomCells.add(cell);
       }
     }
@@ -93,6 +96,7 @@ export function generateLevel(
     for (const cell of path) {
       if (grid.get(cell) === Terrain.WALL) {
         grid.set(cell, Terrain.FLOOR);
+        floorVariants.set(cell, rng.pick([0, 1, 2]));
         corridorCells.add(cell);
       }
     }
@@ -132,7 +136,7 @@ export function generateLevel(
 
   const groundItems = generateGroundItems(grid, rng, entrance, exit, loot);
 
-  return { grid, rooms, entrance, exit, groundItems };
+  return { grid, rooms, entrance, exit, groundItems, floorVariants };
 }
 
 function generateGroundItems(

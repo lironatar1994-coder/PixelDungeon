@@ -30,6 +30,8 @@ export interface LevelSnapshot {
   exit: number;
   explored: number[];
   groundItems: GroundItem[];
+  openDoors: number[];
+  floorVariants: [number, number][];
 }
 
 export class Level {
@@ -49,6 +51,12 @@ export class Level {
   /** Fog-of-war memory: cells ever seen on this floor (persists across visits). */
   readonly explored = new Set<number>();
 
+  /** Cells of doors that have been opened. */
+  readonly openDoors: Set<number>;
+
+  /** Static random visual variant (0, 1, or 2) assigned to each floor cell. */
+  readonly floorVariants: Map<number, number>;
+
   /** One loose item per cell. Values are content item ids, not live Item objects. */
   private readonly groundItemByCell = new Map<number, string>();
 
@@ -60,6 +68,8 @@ export class Level {
     entrance: number;
     exit: number;
     groundItems?: readonly GroundItem[];
+    openDoors?: Set<number>;
+    floorVariants?: Map<number, number>;
   }) {
     this.depth = params.depth;
     this.seed = params.seed;
@@ -70,6 +80,8 @@ export class Level {
     for (const item of params.groundItems ?? []) {
       this.placeGroundItem(item.cell, item.itemId);
     }
+    this.openDoors = params.openDoors ?? new Set();
+    this.floorVariants = params.floorVariants ?? new Map();
   }
 
   get groundItems(): GroundItem[] {
@@ -106,6 +118,8 @@ export class Level {
       exit: this.exit,
       explored: [...this.explored],
       groundItems: this.groundItems,
+      openDoors: [...this.openDoors],
+      floorVariants: [...this.floorVariants.entries()],
     };
   }
 
@@ -118,6 +132,8 @@ export class Level {
       entrance: snapshot.entrance,
       exit: snapshot.exit,
       groundItems: snapshot.groundItems ?? [],
+      openDoors: new Set(snapshot.openDoors ?? []),
+      floorVariants: new Map(snapshot.floorVariants ?? []),
     });
     for (const cell of snapshot.explored) {
       if (grid.inBoundsCell(cell)) level.explored.add(cell);
