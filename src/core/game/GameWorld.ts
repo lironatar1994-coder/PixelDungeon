@@ -462,6 +462,7 @@ export class GameWorld {
     if (this.heroDead) return false;
     const item = this.inventoryRef.all.find((it) => it.id === itemId);
     if (!item || !this.inventoryRef.remove(item)) return false;
+    this.level.placeGroundItem(this.hero.pos, item.id);
     this.pushLog(`You drop ${item.name}.`);
     this.hero.pending = { kind: "wait" };
     this.processTurns();

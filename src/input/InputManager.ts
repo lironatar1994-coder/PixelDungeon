@@ -24,6 +24,7 @@ export class InputManager {
     // Stop the browser turning touches into scroll/zoom/synthetic clicks.
     this.canvas.style.touchAction = "none";
     this.canvas.addEventListener("pointerdown", this.onPointerDown);
+    this.canvas.addEventListener("pointerup", this.onPointerUp);
     this.canvas.addEventListener("contextmenu", this.onContextMenu);
   }
 
@@ -39,8 +40,15 @@ export class InputManager {
   /** Translate a DOM pointer event into canvas-logical (CSS-pixel) coords. */
   private toLocal(e: PointerEvent): Point {
     const rect = this.canvas.getBoundingClientRect();
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    const scaleX = this.canvas.width / rect.width;
+    const scaleY = this.canvas.height / rect.height;
+    return { 
+      x: (e.clientX - rect.left) * scaleX, 
+      y: (e.clientY - rect.top) * scaleY 
+    };
   }
+
+  private pointerDownPos: Point | null = null;
 
   private onPointerDown = (e: PointerEvent): void => {
     if (e.pointerType === "touch" && !e.isPrimary) {
@@ -56,12 +64,31 @@ export class InputManager {
       e.preventDefault();
       e.stopPropagation();
       this.bus.emit("input:ui", { layer: consumedBy, x: point.x, y: point.y });
+      this.pointerDownPos = null;
       return;
     }
 
+    this.pointerDownPos = point;
+  };
+
+  private onPointerUp = (e: PointerEvent): void => {
+    if (e.pointerType === "touch" && !e.isPrimary) {
+      e.preventDefault();
+      return;
+    }
+    
+    if (!this.pointerDownPos) return;
+
+    const upPoint = this.toLocal(e);
+    const dx = upPoint.x - this.pointerDownPos.x;
+    const dy = upPoint.y - this.pointerDownPos.y;
+    this.pointerDownPos = null;
+
+    if (Math.hypot(dx, dy) > 10) return;
+
     // No UI claimed it: it belongs to the game world.
     e.preventDefault();
-    this.bus.emit("input:world", { x: point.x, y: point.y });
+    this.bus.emit("input:world", { x: upPoint.x, y: upPoint.y });
   };
 
   private onContextMenu = (e: MouseEvent): void => {
@@ -71,6 +98,7 @@ export class InputManager {
 
   dispose(): void {
     this.canvas.removeEventListener("pointerdown", this.onPointerDown);
+    this.canvas.removeEventListener("pointerup", this.onPointerUp);
     this.canvas.removeEventListener("contextmenu", this.onContextMenu);
   }
 }
