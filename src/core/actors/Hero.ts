@@ -16,27 +16,75 @@ export type HeroAction =
   | { kind: "move"; cell: number }
   | { kind: "attack"; target: number }
   | { kind: "rangedAttack"; target: number }
+  | { kind: "pickUp" }
   | { kind: "wait" };
 
 /** What the hero needs from the world to resolve an attack. */
 export interface HeroContext {
   attack(targetCell: number): void;
+  pickUp?(): void;
 }
 
 export class Hero extends Actor {
+  static readonly MAX_LEVEL = 30;
+
   pos: number;
   readonly stats: CombatStats;
+  level: number;
+  experience: number;
   /** The action the hero will take on its next turn, or null while waiting. */
   pending: HeroAction | null = null;
 
   private readonly ctx: HeroContext;
 
-  constructor(pos: number, base: BaseStats, ctx: HeroContext) {
+  constructor(
+    pos: number,
+    base: BaseStats,
+    ctx: HeroContext,
+    progression: { level?: number; experience?: number } = {},
+  ) {
     super();
     this.pos = pos;
     this.stats = new CombatStats(base);
+    this.level = progression.level ?? 1;
+    this.experience = progression.experience ?? 0;
     this.ctx = ctx;
     this.actPriority = ActorPriority.HERO;
+  }
+
+  maxExperience(): number {
+    return Hero.maxExperience(this.level);
+  }
+
+  static maxExperience(level: number): number {
+    return 5 + Math.max(1, level) * 5;
+  }
+
+  addExperience(amount: number): { gained: number; levelsGained: number } {
+    const gained = Math.max(0, Math.floor(amount));
+    if (gained === 0 || this.level >= Hero.MAX_LEVEL) {
+      return { gained, levelsGained: 0 };
+    }
+
+    this.experience += gained;
+    let levelsGained = 0;
+    while (this.experience >= this.maxExperience()) {
+      this.experience -= this.maxExperience();
+      if (this.level < Hero.MAX_LEVEL) {
+        this.level++;
+        levelsGained++;
+        this.stats.increaseBase("maxHealth", 5);
+        this.stats.increaseBase("accuracy", 1);
+        this.stats.increaseBase("evasion", 1);
+        this.stats.healToFull();
+      }
+      if (this.level >= Hero.MAX_LEVEL) {
+        this.experience = 0;
+        break;
+      }
+    }
+
+    return { gained, levelsGained };
   }
 
   act(): boolean {
@@ -56,6 +104,8 @@ export class Hero extends Actor {
       this.pos = action.cell;
     } else if (action.kind === "attack" || action.kind === "rangedAttack") {
       this.ctx.attack(action.target);
+    } else if (action.kind === "pickUp") {
+      this.ctx.pickUp?.();
     }
     this.spend(actionCost);
     return true;

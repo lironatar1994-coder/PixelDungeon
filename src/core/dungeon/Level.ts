@@ -14,6 +14,11 @@ import type { Grid } from "@/core/grid/Grid";
 import { Rect } from "@/core/grid/Rect";
 import type { Terrain } from "@/core/grid/terrain";
 
+export interface GroundItem {
+  cell: number;
+  itemId: string;
+}
+
 export interface LevelSnapshot {
   depth: number;
   seed: number;
@@ -24,6 +29,7 @@ export interface LevelSnapshot {
   entrance: number;
   exit: number;
   explored: number[];
+  groundItems: GroundItem[];
 }
 
 export class Level {
@@ -43,9 +49,8 @@ export class Level {
   /** Fog-of-war memory: cells ever seen on this floor (persists across visits). */
   readonly explored = new Set<number>();
 
-  // Phase 3+/4 will populate these:
-  // readonly mobs: Mob[] = [];
-  // readonly heaps: Map<number, Heap> = new Map();
+  /** One loose item per cell. Values are content item ids, not live Item objects. */
+  private readonly groundItemByCell = new Map<number, string>();
 
   constructor(params: {
     depth: number;
@@ -54,6 +59,7 @@ export class Level {
     rooms: Rect[];
     entrance: number;
     exit: number;
+    groundItems?: readonly GroundItem[];
   }) {
     this.depth = params.depth;
     this.seed = params.seed;
@@ -61,6 +67,31 @@ export class Level {
     this.rooms = params.rooms;
     this.entrance = params.entrance;
     this.exit = params.exit;
+    for (const item of params.groundItems ?? []) {
+      this.placeGroundItem(item.cell, item.itemId);
+    }
+  }
+
+  get groundItems(): GroundItem[] {
+    return [...this.groundItemByCell.entries()].map(([cell, itemId]) => ({ cell, itemId }));
+  }
+
+  itemAt(cell: number): string | null {
+    return this.groundItemByCell.get(cell) ?? null;
+  }
+
+  placeGroundItem(cell: number, itemId: string): boolean {
+    if (!this.grid.inBoundsCell(cell) || !this.grid.isWalkable(cell)) return false;
+    if (cell === this.entrance || cell === this.exit) return false;
+    if (this.groundItemByCell.has(cell)) return false;
+    this.groundItemByCell.set(cell, itemId);
+    return true;
+  }
+
+  takeGroundItem(cell: number): string | null {
+    const itemId = this.groundItemByCell.get(cell) ?? null;
+    if (itemId !== null) this.groundItemByCell.delete(cell);
+    return itemId;
   }
 
   snapshot(): LevelSnapshot {
@@ -74,6 +105,7 @@ export class Level {
       entrance: this.entrance,
       exit: this.exit,
       explored: [...this.explored],
+      groundItems: this.groundItems,
     };
   }
 
@@ -85,6 +117,7 @@ export class Level {
       rooms: snapshot.rooms.map((r) => new Rect(r.x, r.y, r.w, r.h)),
       entrance: snapshot.entrance,
       exit: snapshot.exit,
+      groundItems: snapshot.groundItems ?? [],
     });
     for (const cell of snapshot.explored) {
       if (grid.inBoundsCell(cell)) level.explored.add(cell);

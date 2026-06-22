@@ -565,3 +565,172 @@ Verified with `tsc --noEmit` using the bundled Node runtime. A focused Vitest
 run for `GameWorld.test.ts` remains blocked by the managed sandbox before tests
 load because esbuild cannot read the parent directory while resolving
 `vite.config.ts`; no TypeScript errors were reported.
+
+### Phase 10 - Analytics & Telemetry COMPLETE
+Added PostHog telemetry without letting `src/core/` know about PostHog, network
+APIs, or analytics. **`package.json`** ([package.json](package.json)) now
+depends on `posthog-js` (`^1.391.6`) and **`package-lock.json`**
+([package-lock.json](package-lock.json)) was updated through npm using a
+workspace-local cache.
+
+**`TelemetryManager`** ([src/events/TelemetryManager.ts](src/events/TelemetryManager.ts))
+initializes PostHog with the placeholder key
+`YOUR_API_KEY_HERE` and the EU endpoint `https://eu.i.posthog.com`. It only
+subscribes to EventBus events:
+`game:start` -> `Game Started`, `hero:damaged` -> `Hero Damaged`, and
+`game:over` -> `Hero Died`.
+
+**`EventBus`** ([src/events/EventBus.ts](src/events/EventBus.ts)) gained typed
+`game:start` and `game:over` events. **`main.ts`** ([src/main.ts](src/main.ts))
+initializes telemetry immediately after constructing the EventBus, emits
+`game:start` whenever a run enters Playing state, and derives `game:over` from
+the lethal `hero:damaged` event using the event HP (`hp <= 0`) because the
+core `heroDead` flag flips just after the damage callback. The `Hero Died`
+payload includes `killer`, `depth`, and `turns` from the world snapshot.
+
+Verified with `tsc --noEmit` using the bundled Node runtime. Full Vitest/Vite
+execution remains blocked by the managed sandbox's esbuild parent-directory
+access restriction; no TypeScript errors were reported.
+
+### Phase 11 - Hero Progression & Strength Requirements COMPLETE
+Translated the first SPD progression layer into pure core logic. **`Hero`**
+([src/core/actors/Hero.ts](src/core/actors/Hero.ts)) now owns `level` and
+`experience`, starting at level 1 with 0 EXP. The level threshold follows SPD's
+`5 + level * 5` curve, with `MAX_LEVEL = 30`. On level-up the hero permanently
+gains +5 max HP, fully heals, and receives +1 base accuracy and +1 base
+evasion.
+
+Permanent growth is the only sanctioned exception to the Phase 4 non-destructive
+modifier model. **`CombatStats`**
+([src/core/combat/CombatStats.ts](src/core/combat/CombatStats.ts)) now exposes
+`increaseBase(...)` for true progression such as level-ups and Potion of
+Strength; equipment, buffs, and temporary effects still remain removable
+modifiers layered over those base values. This keeps permanent advancement
+explicit while preserving the anti-corruption guarantees for every transient
+stat source.
+
+Enemy progression rewards are data-driven. **`EnemyDef`**
+([src/core/data/types.ts](src/core/data/types.ts)) and
+**`enemies.json`** ([public/configs/enemies.json](public/configs/enemies.json))
+now include `expReward` and `maxLevelCap`. **`GameWorld`**
+([src/core/game/GameWorld.ts](src/core/game/GameWorld.ts)) grants EXP when the
+hero kills an enemy only if `hero.level <= enemy.maxLevelCap`, matching SPD's
+mob reward gate. Hero level/EXP are included in save snapshots and restored
+with backward-compatible defaults.
+
+Strength and encumbrance are also data-driven. **`ItemDef`**
+([src/core/data/types.ts](src/core/data/types.ts)) and
+**`items.json`** ([public/configs/items.json](public/configs/items.json)) now
+support `strengthRequired` and `strengthBonus`. **`Inventory`**
+([src/core/items/Inventory.ts](src/core/items/Inventory.ts)) computes
+under-strength penalties as removable equipment modifiers: weapons multiply
+attack delay by `1.2 ^ encumbrance`, and armor multiplies movement/action speed
+by `1 / (1.2 ^ encumbrance)`. Potion of Strength permanently adds +1 base
+strength and refreshes equipment modifiers so penalties disappear immediately
+when the requirement is met.
+
+The Hero modal in **`GameOverlay`** ([src/ui/GameOverlay.ts](src/ui/GameOverlay.ts))
+now displays level, EXP, strength, and item strength requirements as read-only
+state; it still only issues equip/consume/drop intents to `GameWorld`.
+
+Added focused tests for hero level thresholds, permanent stat growth, enemy EXP
+caps, strength potion consumption, parser validation, and strength-based
+equipment penalties. Verified with `tsc --noEmit` using the bundled Node
+runtime. Full Vitest startup is still blocked in the managed sandbox by
+esbuild's parent-directory access error while resolving `vite.config.ts`; the
+test files compile cleanly under TypeScript.
+
+### Phase 12 - Ground Loot & Pick-Up Interaction COMPLETE
+Added persistent, saveable ground loot without crossing the core/render
+firewall. **`Level`** ([src/core/dungeon/Level.ts](src/core/dungeon/Level.ts))
+now owns a `Map`-backed ground item state: one item id per cell, exposed as
+plain `{ cell, itemId }` records for snapshots and rendering. `LevelSnapshot`
+serializes `groundItems`, and `Level.fromSnapshot(...)` defaults missing arrays
+to empty so older saves still rehydrate.
+
+Loot generation remains deterministic. **`LevelGenerator`**
+([src/core/procgen/LevelGenerator.ts](src/core/procgen/LevelGenerator.ts))
+accepts a validated item-id loot pool plus guaranteed item ids, then places
+loot only on walkable, non-stair cells. **`DungeonManager`**
+([src/core/dungeon/DungeonManager.ts](src/core/dungeon/DungeonManager.ts))
+receives a content-derived `DungeonLootConfig` from **`GameWorld`** and uses the
+run seed to choose exactly two unique depths between 1 and 5 for
+`potion_strength`. Potion of Strength is excluded from normal random floor loot,
+so those two guaranteed placements are the only early progression potions.
+
+**`Hero`** ([src/core/actors/Hero.ts](src/core/actors/Hero.ts)) now has a
+`pickUp` action kind. It resolves through the injected `HeroContext`, so pickup
+still spends a normal `TICK / hero.stats.speed` turn through the queue and
+keeps all state mutation inside **`GameWorld`**
+([src/core/game/GameWorld.ts](src/core/game/GameWorld.ts)). `tryPickUpItem()`
+checks the hero's current cell, validates the item id through `ContentDatabase`,
+removes it from the level, adds the live item definition to `Inventory`, logs
+the pickup, and auto-saves via the existing `onChange` path.
+
+Rendering and input stay thin. **`MapScene`**
+([src/render/MapScene.ts](src/render/MapScene.ts)) draws visible ground items
+from the read-only `MapView` using `AssetLoader.spriteForItem(...)`, with a
+small fallback marker if assets are unavailable. **`AssetLoader`**
+([src/render/AssetLoader.ts](src/render/AssetLoader.ts)) now maps
+`potion_strength` to the SPD potion icon coordinates. **`main.ts`**
+([src/main.ts](src/main.ts)) wires a tap on the hero's own tile to
+`world.tryPickUpItem()` before normal tap-to-walk planning.
+
+Added focused tests for deterministic loot placement, walkable non-stair item
+cells, exactly two guaranteed Potions of Strength in depths 1..5, Hero pickup
+turn cost, and GameWorld pickup into inventory. Verified with `tsc --noEmit`
+and `git diff --check`. Full Vitest startup remains blocked in this managed
+sandbox by esbuild's parent-directory access error while resolving
+`vite.config.ts`.
+
+### Phase 14 - Hero Profiles & Run History COMPLETE
+Added data-driven hero classes without moving profile logic into UI code.
+**`heroes.json`** ([public/configs/heroes.json](public/configs/heroes.json))
+defines `warrior` and `mage`: Warrior starts with 20 HP, 15 STR,
+`short_sword`, and `ration`; Mage starts with 15 HP, 15 STR, `quarterstaff`,
+and `ration`. **`parse.ts`** ([src/core/data/parse.ts](src/core/data/parse.ts))
+and **`ContentDatabase`**
+([src/core/data/ContentDatabase.ts](src/core/data/ContentDatabase.ts)) now load,
+validate, index, and expose `HeroDef` profiles with a safe Warrior fallback.
+**`loadContent.ts`** ([src/core/data/loadContent.ts](src/core/data/loadContent.ts))
+fetches `heroes.json` alongside enemies/items.
+
+**`GameWorld`** ([src/core/game/GameWorld.ts](src/core/game/GameWorld.ts)) now
+accepts `heroId` in `WorldOptions`, resolves it through `ContentDatabase`, and
+derives the hero's base max HP, base strength, starting inventory, equipped
+starter weapon/armor, class name, and sprite id from that profile. Save
+snapshots include `heroProfileId`, and restore uses that id before rebuilding
+the living Hero instance. The public item data now includes `quarterstaff`, and
+**`Inventory`** ([src/core/items/Inventory.ts](src/core/items/Inventory.ts))
+honors weapon-side `defense` modifiers so the staff can provide its defensive
+bonus.
+
+**`MainMenu`** ([src/ui/MainMenu.ts](src/ui/MainMenu.ts)) now prompts for class
+selection when New Game is clicked, then emits only `newGame(heroId)` to the
+composition root. It also includes a History panel that renders stored run
+records. Styling stays in **`style.css`** ([src/style.css](src/style.css)) and
+keeps the existing SPD chrome/pixel-font treatment.
+
+Added **`HistoryManager`**
+([src/core/save/HistoryManager.ts](src/core/save/HistoryManager.ts)) for a
+separate `pixel_dungeon_history` storage key. On lethal `hero:damaged`,
+**`main.ts`** ([src/main.ts](src/main.ts)) records the fallen run before the
+dead save is cleared: class, hero level, depth reached, killer name, and the
+current inventory item ids.
+
+Enhanced `game:over` in **`EventBus`** ([src/events/EventBus.ts](src/events/EventBus.ts))
+to carry class, `hero_level`, depth, killer, inventory, and turns.
+**`TelemetryManager`** ([src/events/TelemetryManager.ts](src/events/TelemetryManager.ts))
+now sends `posthog.capture("Hero Died", { class, hero_level, depth, killer,
+inventory })`, keeping PostHog isolated to the EventBus listener layer.
+
+Rendering remains read-only. **`AssetLoader`**
+([src/render/AssetLoader.ts](src/render/AssetLoader.ts)) now maps
+`quarterstaff`, `mageHero`, and the copied `mage.png` sprite sheet;
+**`MapScene`** ([src/render/MapScene.ts](src/render/MapScene.ts)) draws the
+hero sprite from the read-only `MapView`.
+
+Added focused tests for hero profile parsing/indexing, Mage world creation and
+snapshot restore, and history persistence. Verified with `tsc --noEmit` and
+`git diff --check`. Full Vitest startup remains blocked in this managed sandbox
+by esbuild's parent-directory access error while resolving `vite.config.ts`.

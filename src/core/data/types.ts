@@ -30,6 +30,10 @@ export interface EnemyDef {
   spawnWeight: number;
   /** Earliest floor this enemy may appear on. Always >= 1. */
   minDepth: number;
+  /** EXP awarded when killed, subject to maxLevelCap. Always >= 0. */
+  expReward: number;
+  /** Last hero level that can earn EXP from this enemy. Always >= 0. */
+  maxLevelCap: number;
   description: string;
 }
 
@@ -43,10 +47,28 @@ export interface ItemDef {
   damageMax?: number;
   /** Weapon: attack action multiplier. 1 = normal, below 1 faster, above 1 slower. */
   attackDelay?: number;
+  /** Equipment: strength needed to avoid encumbrance penalties. */
+  strengthRequired?: number;
   /** Armor: damage-reduction ceiling contributed when equipped. */
   defense?: number;
   /** Potion: hit points restored when consumed. */
   heal?: number;
+  /** Potion: permanent strength gain when consumed. */
+  strengthBonus?: number;
   /** Any other type-specific fields preserved from JSON. */
   [key: string]: unknown;
+}
+
+export interface HeroDef {
+  id: string;
+  name: string;
+  /** Starting max/current HP. Always >= 1. */
+  maxHealth: number;
+  /** Starting base strength. Always >= 0. */
+  strength: number;
+  /** Render-layer sprite id, kept as plain data for the composition root. */
+  sprite: string;
+  /** Item ids granted at run start. */
+  startingItems: string[];
+  description: string;
 }

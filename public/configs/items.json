@@ -6,7 +6,19 @@
     "tier": 1,
     "damageMin": 2,
     "damageMax": 6,
+    "strengthRequired": 10,
     "description": "A reliable starter blade."
+  },
+  {
+    "id": "quarterstaff",
+    "name": "Quarterstaff",
+    "type": "weapon",
+    "tier": 2,
+    "damageMin": 1,
+    "damageMax": 8,
+    "defense": 2,
+    "strengthRequired": 12,
+    "description": "A balanced staff that helps its wielder keep distance."
   },
   {
     "id": "leather_armor",
@@ -14,6 +26,7 @@
     "type": "armor",
     "tier": 1,
     "defense": 2,
+    "strengthRequired": 10,
     "description": "Light protection that won't slow you down."
   },
   {
@@ -22,6 +35,13 @@
     "type": "potion",
     "heal": 15,
     "description": "Restores a chunk of health when quaffed."
+  },
+  {
+    "id": "potion_strength",
+    "name": "Potion of Strength",
+    "type": "potion",
+    "strengthBonus": 1,
+    "description": "Permanently increases strength by 1."
   },
   {
     "id": "ration",

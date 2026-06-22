@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { parseEnemy, parseEnemies, parseItems } from "@/core/data/parse";
+import { parseEnemy, parseEnemies, parseHero, parseHeroes, parseItems } from "@/core/data/parse";
 
 describe("parseEnemy (corruption guard)", () => {
   beforeEach(() => vi.spyOn(console, "warn").mockImplementation(() => {}));
@@ -14,8 +14,17 @@ describe("parseEnemy (corruption guard)", () => {
       vision: 6,
       spawnWeight: 4,
       minDepth: 1,
+      expReward: 2,
+      maxLevelCap: 5,
     });
-    expect(def).toMatchObject({ id: "rat", name: "Sewer Rat", maxHealth: 8, speed: 2 });
+    expect(def).toMatchObject({
+      id: "rat",
+      name: "Sewer Rat",
+      maxHealth: 8,
+      speed: 2,
+      expReward: 2,
+      maxLevelCap: 5,
+    });
   });
 
   it("rejects entries with no id (returns null)", () => {
@@ -31,6 +40,8 @@ describe("parseEnemy (corruption guard)", () => {
     expect(def.speed).toBe(1);
     expect(def.vision).toBe(6);
     expect(def.minDepth).toBe(1);
+    expect(def.expReward).toBe(1);
+    expect(def.maxLevelCap).toBe(30);
   });
 
   it("NEVER yields a zero/negative/NaN speed (protects TICK / speed math)", () => {
@@ -82,7 +93,9 @@ describe("parseEnemies / parseItems (collection guards)", () => {
         damageMin: 2,
         damageMax: 6,
         attackDelay: 0.75,
+        strengthRequired: 10,
       },
+      { id: "strength", type: "potion", strengthBonus: 1 },
     ]);
     expect(items[0]).toMatchObject({
       id: "sword",
@@ -90,7 +103,9 @@ describe("parseEnemies / parseItems (collection guards)", () => {
       damageMin: 2,
       damageMax: 6,
       attackDelay: 0.75,
+      strengthRequired: 10,
     });
+    expect(items[1]).toMatchObject({ id: "strength", type: "potion", strengthBonus: 1 });
   });
 
   it("clamps invalid weapon attack delays away from zero", () => {
@@ -100,5 +115,35 @@ describe("parseEnemies / parseItems (collection guards)", () => {
     ]);
     expect(tooFast!.attackDelay).toBeGreaterThan(0);
     expect(invalid!.attackDelay).toBe(1);
+  });
+});
+
+describe("parseHero / parseHeroes", () => {
+  beforeEach(() => vi.spyOn(console, "warn").mockImplementation(() => {}));
+  afterEach(() => vi.restoreAllMocks());
+
+  it("parses a data-driven hero profile", () => {
+    const hero = parseHero({
+      id: "mage",
+      name: "Mage",
+      maxHealth: 15,
+      strength: 15,
+      sprite: "mage",
+      startingItems: ["quarterstaff", "ration", 42],
+    });
+
+    expect(hero).toMatchObject({
+      id: "mage",
+      name: "Mage",
+      maxHealth: 15,
+      strength: 15,
+      sprite: "mage",
+      startingItems: ["quarterstaff", "ration"],
+    });
+  });
+
+  it("drops invalid hero entries but keeps valid profiles", () => {
+    expect(parseHero({ name: "No Id" })).toBeNull();
+    expect(parseHeroes([{ id: "warrior" }, null]).map((hero) => hero.id)).toEqual(["warrior"]);
   });
 });

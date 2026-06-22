@@ -113,7 +113,7 @@ export class Inventory {
 
     if (this.slots[slot] !== null) this.unequip(slot);
     this.slots[slot] = item;
-    this.applyModifiers(slot, item);
+    this.refreshEquipmentModifiers();
     return true;
   }
 
@@ -124,16 +124,33 @@ export class Inventory {
     this.slots[slot] = null;
   }
 
+  /** Rebuild equipment modifiers after equipment or base strength changes. */
+  refreshEquipmentModifiers(): void {
+    for (const slot of ["weapon", "armor"] as const) {
+      this.stats.removeModifiers(`equip:${slot}`);
+      const item = this.slots[slot];
+      if (item) this.applyModifiers(slot, item);
+    }
+  }
+
   private applyModifiers(slot: EquipSlot, item: ItemDef): void {
     const source = `equip:${slot}`;
+    const encumbrance = Math.max(0, (item.strengthRequired ?? 0) - this.stats.strength);
     if (slot === "weapon") {
       this.stats.addModifier({ id: source, stat: "damageMin", amount: item.damageMin ?? 0 });
       this.stats.addModifier({ id: source, stat: "damageMax", amount: item.damageMax ?? 0 });
-      if (typeof item.attackDelay === "number") {
-        this.stats.addModifier({ id: source, stat: "attackDelay", amount: item.attackDelay - 1 });
+      if (typeof item.defense === "number") {
+        this.stats.addModifier({ id: source, stat: "armor", amount: item.defense });
       }
+      const baseDelay = item.attackDelay ?? 1;
+      const encumberedDelay = baseDelay * Math.pow(1.2, encumbrance);
+      this.stats.addModifier({ id: source, stat: "attackDelay", amount: encumberedDelay - 1 });
     } else {
       this.stats.addModifier({ id: source, stat: "armor", amount: item.defense ?? 0 });
+      if (encumbrance > 0) {
+        const speedFactor = 1 / Math.pow(1.2, encumbrance);
+        this.stats.addModifier({ id: source, stat: "speed", amount: speedFactor - 1 });
+      }
     }
   }
 }

@@ -95,6 +95,10 @@ export interface MapView {
     hp: number;
     maxHealth: number;
   }>;
+  groundItems: ReadonlyArray<{
+    cell: number;
+    itemId: string;
+  }>;
   visible: ReadonlySet<number>;
   explored: ReadonlySet<number>;
   selectedCell: number | null;
@@ -108,6 +112,7 @@ export interface MapView {
     armor: number;
     weaponName: string;
     armorName: string;
+    sprite: SpriteKey;
     alive: boolean;
   };
   log: readonly string[];
@@ -187,6 +192,11 @@ export function drawMapScene(
     drawCell(ctx, assets, vp, grid, view.exit, "exit", COLORS.exit);
   }
 
+  for (const item of view.groundItems) {
+    if (!view.visible.has(item.cell)) continue;
+    drawGroundItem(ctx, assets, vp, grid, item);
+  }
+
   for (const enemy of view.enemies) {
     if (!view.visible.has(enemy.pos)) continue;
     drawCell(
@@ -207,7 +217,7 @@ export function drawMapScene(
     );
   }
 
-  drawCell(ctx, assets, vp, grid, view.heroPos, "hero", COLORS.hero, COLORS.heroEdge, {
+  drawCell(ctx, assets, vp, grid, view.heroPos, view.hero.sprite, COLORS.hero, COLORS.heroEdge, {
     elapsed: idleElapsed,
     key: `hero:${view.heroPos}`,
     actorId: "hero",
@@ -226,6 +236,39 @@ export function drawMapScene(
 }
 
 type VP = { tileSize: number; offsetX: number; offsetY: number };
+
+function drawGroundItem(
+  ctx: CanvasRenderingContext2D,
+  assets: SpriteSheetAssets | undefined,
+  vp: VP,
+  grid: Grid,
+  item: { cell: number; itemId: string },
+): void {
+  const ts = vp.tileSize;
+  const size = Math.max(8, ts * 0.62);
+  const x = vp.offsetX + grid.xOf(item.cell) * ts + (ts - size) / 2;
+  const y = vp.offsetY + grid.yOf(item.cell) * ts + ts * 0.28;
+  const sprite = assets?.spriteForItem(item.itemId) ?? null;
+  if (assets && sprite && drawSprite(ctx, assets, sprite, x, y, size, 1)) {
+    return;
+  }
+
+  const cx = vp.offsetX + grid.xOf(item.cell) * ts + ts / 2;
+  const cy = vp.offsetY + grid.yOf(item.cell) * ts + ts * 0.62;
+  ctx.save();
+  ctx.fillStyle = "#f2d66b";
+  ctx.strokeStyle = "rgba(0, 0, 0, 0.85)";
+  ctx.lineWidth = Math.max(1, ts * 0.06);
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - size * 0.28);
+  ctx.lineTo(cx + size * 0.28, cy);
+  ctx.lineTo(cx, cy + size * 0.28);
+  ctx.lineTo(cx - size * 0.28, cy);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
 
 function drawCell(
   ctx: CanvasRenderingContext2D,
@@ -298,7 +341,7 @@ interface ActorDrawMotion extends IdleState {
 }
 
 function isIdleAnimated(sprite: SpriteKey): boolean {
-  return sprite === "hero" || sprite === "rat" || sprite === "zombie";
+  return sprite === "hero" || sprite === "mageHero" || sprite === "rat" || sprite === "zombie";
 }
 
 interface IdleMotion {

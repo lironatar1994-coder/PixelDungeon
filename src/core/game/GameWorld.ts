@@ -15,7 +15,11 @@
  * possibly attacking back), then recomputes FOV once. Combat resolution is
  * centralised here so actors stay simple and decoupled.
  */
-import { DungeonManager, type DungeonSnapshot } from "@/core/dungeon/DungeonManager";
+import {
+  DungeonManager,
+  type DungeonLootConfig,
+  type DungeonSnapshot,
+} from "@/core/dungeon/DungeonManager";
 import type { Level } from "@/core/dungeon/Level";
 import { TurnQueue, type TurnQueueSnapshot } from "@/core/turn/TurnQueue";
 import { RNG } from "@/core/rng/Mulberry32";
@@ -27,6 +31,7 @@ import { resolveAttack } from "@/core/combat/resolveAttack";
 import type { BaseStats, CombatStatsSnapshot } from "@/core/combat/CombatStats";
 import { Inventory, type InventorySnapshot } from "@/core/items/Inventory";
 import { ContentDatabase, type ContentDatabase as ContentDatabaseType } from "@/core/data/ContentDatabase";
+import type { HeroDef } from "@/core/data/types";
 
 /** Payload emitted whenever the hero loses hit points. */
 export interface HeroDamagedInfo {
@@ -52,6 +57,8 @@ export interface WorldOptions {
   visionRadius?: number;
   /** Max enemies spawned per floor. */
   enemyCount?: number;
+  /** Hero profile id from heroes.json. */
+  heroId?: string;
   onChange?: (world: GameWorld) => void;
   onLog?: (line: string) => void;
   /** Fired when the hero takes damage. The orchestrator bridges this to the
@@ -73,11 +80,14 @@ export interface EnemySnapshot {
 export interface HeroSnapshot {
   pos: number;
   stats: CombatStatsSnapshot;
+  level: number;
+  experience: number;
 }
 
 export interface GameWorldSnapshot {
   version: 1;
   seed: string;
+  heroProfileId: string;
   depth: number;
   visionRadius: number;
   enemyCount: number;
@@ -101,10 +111,8 @@ const HERO_BASE: BaseStats = {
   damageMax: 3,
   armor: 0,
   speed: 1,
+  strength: 15,
 };
-
-/** Items the hero starts with, pulled from items.json by id. */
-const STARTER_ITEMS = ["short_sword", "leather_armor", "potion_healing", "ration"];
 
 const MAX_LOG = 50;
 
@@ -115,6 +123,7 @@ export class GameWorld {
   readonly enemyCount: number;
 
   private readonly content: ContentDatabaseType;
+  private heroProfile: HeroDef;
   private readonly combatRng: RNG;
   private readonly onChange?: (world: GameWorld) => void;
   private readonly onLog?: (line: string) => void;
@@ -130,8 +139,9 @@ export class GameWorld {
   private readonly logLines: string[] = [];
 
   constructor(seed: string, content: ContentDatabaseType, opts: WorldOptions = {}) {
-    this.dungeon = new DungeonManager(seed);
     this.content = content;
+    this.heroProfile = this.resolveHeroProfile(opts.heroId);
+    this.dungeon = new DungeonManager(seed, lootConfigForContent(content));
     this.combatRng = new RNG(`${seed}:combat`);
     this.visionRadius = opts.visionRadius ?? 8;
     this.enemyCount = opts.enemyCount ?? 6;
@@ -152,6 +162,7 @@ export class GameWorld {
     const world = new GameWorld(snapshot.seed, content, {
       visionRadius: snapshot.visionRadius,
       enemyCount: snapshot.enemyCount,
+      heroId: snapshot.heroProfileId,
       onChange: opts.onChange,
       onLog: opts.onLog,
       onHeroDamaged: opts.onHeroDamaged,
@@ -180,6 +191,24 @@ export class GameWorld {
   get heroStats() {
     return this.hero.stats;
   }
+  get heroLevel(): number {
+    return this.hero.level;
+  }
+  get heroExperience(): number {
+    return this.hero.experience;
+  }
+  get heroMaxExperience(): number {
+    return this.hero.maxExperience();
+  }
+  get heroProfileId(): string {
+    return this.heroProfile.id;
+  }
+  get heroClassName(): string {
+    return this.heroProfile.name;
+  }
+  get heroSprite(): string {
+    return this.heroProfile.sprite;
+  }
   get inventory(): Inventory {
     return this.inventoryRef;
   }
@@ -195,20 +224,41 @@ export class GameWorld {
 
   // --- setup ---
   private createHero(): void {
-    const ctx: HeroContext = { attack: (cell) => this.heroAttack(cell) };
-    this.hero = new Hero(this.dungeon.current.entrance, { ...HERO_BASE }, ctx);
+    const ctx: HeroContext = {
+      attack: (cell) => this.heroAttack(cell),
+      pickUp: () => this.pickUpHere(),
+    };
+    this.hero = new Hero(
+      this.dungeon.current.entrance,
+      this.baseStatsForHero(this.heroProfile),
+      ctx,
+    );
 
     // Build the inventory from loaded items, then equip weapon + armor. The
     // equipment applies its stats as removable modifiers (no base mutation).
     this.inventoryRef = new Inventory(this.hero.stats, 20);
-    for (const id of STARTER_ITEMS) {
+    for (const id of this.heroProfile.startingItems) {
       const item = this.content.getItem(id);
       if (item) this.inventoryRef.add(item);
     }
-    const weapon = this.content.getItem("short_sword");
-    if (weapon) this.inventoryRef.equip(weapon);
-    const armor = this.content.getItem("leather_armor");
-    if (armor) this.inventoryRef.equip(armor);
+    for (const item of this.inventoryRef.all) {
+      if (item.type === "weapon" || item.type === "armor") {
+        this.inventoryRef.equip(item);
+      }
+    }
+  }
+
+  private resolveHeroProfile(heroId?: string): HeroDef {
+    if (heroId) return this.content.getHero(heroId) ?? this.content.defaultHero;
+    return this.content.defaultHero;
+  }
+
+  private baseStatsForHero(profile: HeroDef): BaseStats {
+    return {
+      ...HERO_BASE,
+      maxHealth: profile.maxHealth,
+      strength: profile.strength,
+    };
   }
 
   private enterFloor(): void {
@@ -237,7 +287,10 @@ export class GameWorld {
     const pool = rng.shuffle((rooms.length > 0 ? rooms : level.rooms).slice());
 
     const senses = this.makeSenses();
-    const used = new Set<number>([level.entrance]);
+    const used = new Set<number>([
+      level.entrance,
+      ...level.groundItems.map((item) => item.cell),
+    ]);
     const count = Math.min(this.enemyCount, pool.length);
     for (let i = 0; i < count; i++) {
       const room = pool[i]!;
@@ -303,6 +356,15 @@ export class GameWorld {
     });
     this.pushLog(`You hit the ${enemy.name} for ${r.damage}.`);
     if (!enemy.stats.alive) {
+      if (this.hero.level <= enemy.def.maxLevelCap && enemy.def.expReward > 0) {
+        const progress = this.hero.addExperience(enemy.def.expReward);
+        if (progress.gained > 0) {
+          this.pushLog(`You gain ${progress.gained} experience.`);
+          if (progress.levelsGained > 0) {
+            this.pushLog(`You are now level ${this.hero.level}!`);
+          }
+        }
+      }
       this.removeEnemy(enemy);
       this.pushLog(`The ${enemy.name} dies!`);
     }
@@ -376,7 +438,12 @@ export class GameWorld {
     if (this.heroDead) return false;
     const item = this.inventoryRef.all.find((it) => it.id === itemId);
     if (!item) return false;
-    if (item.type === "potion" && typeof item.heal === "number") {
+    if (item.type === "potion" && typeof item.strengthBonus === "number" && item.strengthBonus > 0) {
+      this.hero.stats.increaseBase("strength", item.strengthBonus);
+      this.inventoryRef.remove(item);
+      this.inventoryRef.refreshEquipmentModifiers();
+      this.pushLog(`You quaff ${item.name} (+${item.strengthBonus} STR).`);
+    } else if (item.type === "potion" && typeof item.heal === "number") {
       const healed = this.hero.stats.heal(item.heal);
       this.inventoryRef.remove(item);
       this.pushLog(`You quaff ${item.name} (+${healed} HP).`);
@@ -404,6 +471,30 @@ export class GameWorld {
   waitTurn(): boolean {
     if (this.heroDead) return false;
     this.hero.pending = { kind: "wait" };
+    this.processTurns();
+    return true;
+  }
+
+  tryPickUpItem(): boolean {
+    if (this.heroDead) return false;
+    const itemId = this.level.itemAt(this.hero.pos);
+    if (itemId === null) {
+      this.pushLog("Nothing here.");
+      return false;
+    }
+    const item = this.content.getItem(itemId);
+    if (!item) {
+      this.level.takeGroundItem(this.hero.pos);
+      this.pushLog("The item crumbles away.");
+      this.emitChange();
+      return false;
+    }
+    if (this.inventoryRef.isFull()) {
+      this.pushLog("Your pack is full.");
+      return false;
+    }
+
+    this.hero.pending = { kind: "pickUp" };
     this.processTurns();
     return true;
   }
@@ -462,6 +553,20 @@ export class GameWorld {
     this.emitChange();
   }
 
+  private pickUpHere(): void {
+    const itemId = this.level.itemAt(this.hero.pos);
+    if (itemId === null || this.inventoryRef.isFull()) return;
+    const item = this.content.getItem(itemId);
+    if (!item) return;
+    const removed = this.level.takeGroundItem(this.hero.pos);
+    if (removed === null) return;
+    if (!this.inventoryRef.add(item)) {
+      this.level.placeGroundItem(this.hero.pos, removed);
+      return;
+    }
+    this.pushLog(`You pick up ${item.name}.`);
+  }
+
   recomputeFOV(): void {
     this.fov.update(this.grid, this.hero.pos, this.visionRadius);
   }
@@ -492,6 +597,7 @@ export class GameWorld {
     return {
       version: 1,
       seed: this.seed,
+      heroProfileId: this.heroProfile.id,
       depth: this.depth,
       visionRadius: this.visionRadius,
       enemyCount: this.enemyCount,
@@ -499,6 +605,8 @@ export class GameWorld {
       hero: {
         pos: this.hero.pos,
         stats: this.hero.stats.snapshot(),
+        level: this.hero.level,
+        experience: this.hero.experience,
       },
       inventory: this.inventoryRef.snapshot(),
       enemies: this.enemyList.map((enemy, i) => ({
@@ -522,13 +630,23 @@ export class GameWorld {
   }
 
   private restore(snapshot: GameWorldSnapshot): void {
-    this.dungeon = DungeonManager.fromSnapshot(snapshot.dungeon);
+    this.heroProfile = this.resolveHeroProfile(snapshot.heroProfileId);
+    this.dungeon = DungeonManager.fromSnapshot(
+      snapshot.dungeon,
+      lootConfigForContent(this.content),
+    );
     this.combatRng.state = snapshot.combatRngState;
     this.enemyAiRng = new RNG((this.dungeon.current.seed ^ 0x85ebca6b) >>> 0);
     this.enemyAiRng.state = snapshot.enemyAiRngState;
 
-    const ctx: HeroContext = { attack: (cell) => this.heroAttack(cell) };
-    this.hero = new Hero(snapshot.hero.pos, snapshot.hero.stats.base, ctx);
+    const ctx: HeroContext = {
+      attack: (cell) => this.heroAttack(cell),
+      pickUp: () => this.pickUpHere(),
+    };
+    this.hero = new Hero(snapshot.hero.pos, snapshot.hero.stats.base, ctx, {
+      level: snapshot.hero.level ?? 1,
+      experience: snapshot.hero.experience ?? 0,
+    });
     this.hero.stats.restore(snapshot.hero.stats);
     this.hero.pending = null;
 
@@ -567,4 +685,16 @@ export class GameWorld {
   private emitChange(): void {
     this.onChange?.(this);
   }
+}
+
+function lootConfigForContent(content: ContentDatabaseType): DungeonLootConfig {
+  const hasStrengthPotion = content.getItem("potion_strength") !== undefined;
+  return {
+    // Potion of Strength is progression-critical and is distributed through the
+    // guaranteed-depth rule so it cannot randomly over-spawn in depths 1..5.
+    itemIds: content.allItems
+      .map((item) => item.id)
+      .filter((id) => id !== "potion_strength"),
+    strengthPotionId: hasStrengthPotion ? "potion_strength" : null,
+  };
 }

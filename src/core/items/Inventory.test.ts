@@ -14,6 +14,21 @@ const dagger: ItemDef = {
 };
 const axe: ItemDef = { id: "axe", name: "War Axe", type: "weapon", damageMin: 4, damageMax: 10 };
 const armor: ItemDef = { id: "armor", name: "Leather Armor", type: "armor", defense: 3 };
+const heavySword: ItemDef = {
+  id: "heavy_sword",
+  name: "Heavy Sword",
+  type: "weapon",
+  damageMin: 5,
+  damageMax: 9,
+  strengthRequired: 17,
+};
+const heavyArmor: ItemDef = {
+  id: "heavy_armor",
+  name: "Heavy Armor",
+  type: "armor",
+  defense: 5,
+  strengthRequired: 17,
+};
 const potion: ItemDef = { id: "potion", name: "Potion", type: "potion", heal: 10 };
 
 function freshStats(): CombatStats {
@@ -93,6 +108,32 @@ describe("Inventory", () => {
 
     inv.unequip("weapon");
     expect(stats.attackDelay).toBe(1);
+  });
+
+  it("penalizes under-strength weapons with SPD-style attack delay encumbrance", () => {
+    const stats = freshStats();
+    const inv = new Inventory(stats, 10);
+    inv.add(heavySword);
+
+    expect(inv.equip(heavySword)).toBe(true);
+    expect(stats.attackDelay).toBeCloseTo(Math.pow(1.2, 2));
+
+    stats.increaseBase("strength", 2);
+    inv.refreshEquipmentModifiers();
+    expect(stats.attackDelay).toBe(1);
+  });
+
+  it("penalizes under-strength armor by slowing all actions", () => {
+    const stats = freshStats();
+    const inv = new Inventory(stats, 10);
+    inv.add(heavyArmor);
+
+    expect(inv.equip(heavyArmor)).toBe(true);
+    expect(stats.speed).toBeCloseTo(1 / Math.pow(1.2, 2));
+
+    stats.increaseBase("strength", 2);
+    inv.refreshEquipmentModifiers();
+    expect(stats.speed).toBe(1);
   });
 
   it("removing an equipped item also unequips it", () => {

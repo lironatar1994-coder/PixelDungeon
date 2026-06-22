@@ -12,7 +12,7 @@
  * It is pure (no fetch, no DOM), so the corruption-handling is unit-tested
  * directly with plain objects.
  */
-import type { EnemyDef, ItemDef } from "./types";
+import type { EnemyDef, HeroDef, ItemDef } from "./types";
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -74,6 +74,8 @@ export function parseEnemy(raw: unknown): EnemyDef | null {
     armor: num(rec, "armor", 0, { int: true, min: 0 }),
     spawnWeight: num(rec, "spawnWeight", 1, { min: 0 }),
     minDepth: num(rec, "minDepth", 1, { int: true, min: 1 }),
+    expReward: num(rec, "expReward", 1, { int: true, min: 0 }),
+    maxLevelCap: num(rec, "maxLevelCap", 30, { int: true, min: 0 }),
     description: str(rec, "description", ""),
   };
 }
@@ -105,8 +107,11 @@ export function parseItem(raw: unknown): ItemDef | null {
   // Preserve type-specific fields, but guarantee the core three are clean and
   // coerce the known combat numbers (so the inventory can trust them).
   const item: ItemDef = { ...rec, id, name: str(rec, "name", id), type: str(rec, "type", "misc") };
-  for (const key of ["damageMin", "damageMax", "defense", "heal"] as const) {
+  for (const key of ["damageMin", "damageMax", "defense", "heal", "strengthBonus"] as const) {
     if (key in rec) item[key] = num(rec, key, 0, { int: true, min: 0 });
+  }
+  if ("strengthRequired" in rec) {
+    item.strengthRequired = num(rec, "strengthRequired", 0, { int: true, min: 0 });
   }
   if ("attackDelay" in rec) {
     item.attackDelay = num(rec, "attackDelay", 1, { min: 0.1, max: 10 });
@@ -122,6 +127,44 @@ export function parseItems(raw: unknown): ItemDef[] {
   const out: ItemDef[] = [];
   for (const entry of raw) {
     const def = parseItem(entry);
+    if (def) out.push(def);
+  }
+  return out;
+}
+
+export function parseHero(raw: unknown): HeroDef | null {
+  const rec = asRecord(raw);
+  if (!rec) {
+    console.warn("[content] ignoring non-object hero entry:", raw);
+    return null;
+  }
+  const id = str(rec, "id", "");
+  if (id === "") {
+    console.warn("[content] ignoring hero entry with missing id:", raw);
+    return null;
+  }
+  const rawItems = Array.isArray(rec.startingItems) ? rec.startingItems : [];
+  return {
+    id,
+    name: str(rec, "name", id),
+    maxHealth: num(rec, "maxHealth", 20, { int: true, min: 1 }),
+    strength: num(rec, "strength", 15, { int: true, min: 0 }),
+    sprite: str(rec, "sprite", id),
+    startingItems: rawItems.filter((item): item is string => (
+      typeof item === "string" && item.trim() !== ""
+    )),
+    description: str(rec, "description", ""),
+  };
+}
+
+export function parseHeroes(raw: unknown): HeroDef[] {
+  if (!Array.isArray(raw)) {
+    if (raw != null) console.warn("[content] heroes config is not an array:", raw);
+    return [];
+  }
+  const out: HeroDef[] = [];
+  for (const entry of raw) {
+    const def = parseHero(entry);
     if (def) out.push(def);
   }
   return out;

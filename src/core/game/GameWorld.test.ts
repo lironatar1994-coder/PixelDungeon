@@ -23,6 +23,12 @@ const makeWorld = (seed: string, opts?: WorldOptions) =>
 const contentWithPotion = ContentDatabase.fromRaw(
   [],
   [{ id: "potion_healing", name: "Potion of Healing", type: "potion", heal: 15 }],
+  [{ id: "tester", name: "Tester", maxHealth: 20, strength: 15, sprite: "warrior", startingItems: ["potion_healing"] }],
+);
+
+const contentWithGroundPotion = ContentDatabase.fromRaw(
+  [],
+  [{ id: "potion_strength", name: "Potion of Strength", type: "potion", strengthBonus: 1 }],
 );
 
 const contentWithFastWeapon = ContentDatabase.fromRaw(
@@ -51,6 +57,41 @@ const contentWithFastWeapon = ContentDatabase.fromRaw(
       damageMax: 10,
       attackDelay: 0.5,
     },
+  ],
+  [{ id: "tester", name: "Tester", maxHealth: 20, strength: 15, sprite: "warrior", startingItems: ["short_sword"] }],
+);
+
+const contentWithHeavyStarter = ContentDatabase.fromRaw(
+  [],
+  [
+    {
+      id: "short_sword",
+      name: "Heavy Starter Sword",
+      type: "weapon",
+      damageMin: 2,
+      damageMax: 6,
+      strengthRequired: 16,
+    },
+    {
+      id: "potion_strength",
+      name: "Potion of Strength",
+      type: "potion",
+      strengthBonus: 1,
+    },
+  ],
+  [{ id: "tester", name: "Tester", maxHealth: 20, strength: 15, sprite: "warrior", startingItems: ["short_sword"] }],
+);
+
+const contentWithProfiles = ContentDatabase.fromRaw(
+  [],
+  [
+    { id: "short_sword", name: "Short Sword", type: "weapon", damageMin: 2, damageMax: 6 },
+    { id: "quarterstaff", name: "Quarterstaff", type: "weapon", damageMin: 1, damageMax: 8 },
+    { id: "ration", name: "Ration", type: "food" },
+  ],
+  [
+    { id: "warrior", name: "Warrior", maxHealth: 20, strength: 15, sprite: "warrior", startingItems: ["short_sword", "ration"] },
+    { id: "mage", name: "Mage", maxHealth: 15, strength: 15, sprite: "mage", startingItems: ["quarterstaff", "ration"] },
   ],
 );
 
@@ -140,6 +181,54 @@ describe("GameWorld", () => {
     expect(w.log.at(-1)).toContain("You quaff Potion of Healing");
   });
 
+  it("starts runs from the selected hero profile", () => {
+    const mage = new GameWorld("WORLD-MAGE", contentWithProfiles, {
+      enemyCount: 0,
+      heroId: "mage",
+    });
+
+    expect(mage.heroClassName).toBe("Mage");
+    expect(mage.heroProfileId).toBe("mage");
+    expect(mage.heroSprite).toBe("mage");
+    expect(mage.heroStats.maxHealth).toBe(15);
+    expect(mage.inventory.all.map((item) => item.id)).toEqual(["quarterstaff", "ration"]);
+    expect(mage.inventory.equippedIn("weapon")?.id).toBe("quarterstaff");
+    expect(mage.snapshot().heroProfileId).toBe("mage");
+
+    const loaded = GameWorld.fromSnapshot(mage.snapshot(), contentWithProfiles);
+    expect(loaded.heroProfileId).toBe("mage");
+    expect(loaded.heroClassName).toBe("Mage");
+  });
+
+  it("picks up a ground item into inventory as a hero action", () => {
+    const base = new GameWorld("WORLD-PICKUP", contentWithGroundPotion, { enemyCount: 0 });
+    const pickupCell = base.grid
+      .neighbours4(base.heroPos)
+      .find((cell) => (
+        base.grid.isWalkable(cell) &&
+        cell !== base.level.entrance &&
+        cell !== base.level.exit
+      ));
+    expect(pickupCell).toBeDefined();
+
+    const snapshot = base.snapshot();
+    snapshot.hero.pos = pickupCell!;
+    snapshot.dungeon.levels[0]!.groundItems = [
+      { cell: pickupCell!, itemId: "potion_strength" },
+    ];
+    const w = GameWorld.fromSnapshot(snapshot, contentWithGroundPotion);
+
+    expect(w.level.itemAt(w.heroPos)).toBe("potion_strength");
+    expect(w.tryPickUpItem()).toBe(true);
+
+    expect(w.level.itemAt(w.heroPos)).toBeNull();
+    expect(w.inventory.all.some((item) => item.id === "potion_strength")).toBe(true);
+    expect(w.log.at(-1)).toBe("You pick up Potion of Strength.");
+
+    const heroTurn = w.snapshot().queue.actors.find((actor) => actor.id === "hero");
+    expect(heroTurn?.time).toBeCloseTo(1);
+  });
+
   it("wait spends one hero action scaled by the current speed stat", () => {
     const w = makeWorld("WORLD-WAIT", { enemyCount: 0 });
     w.heroStats.addModifier({ id: "haste-test", stat: "speed", amount: 1 });
@@ -172,6 +261,98 @@ describe("GameWorld", () => {
 
     const heroTurn = w.snapshot().queue.actors.find((actor) => actor.id === "hero");
     expect(heroTurn?.time).toBeCloseTo(0.25);
+  });
+
+  it("grants enemy EXP only while the hero is within the enemy level cap", () => {
+    const base = new GameWorld("WORLD-EXP-GRANT", contentWithFastWeapon, {
+      enemyCount: 1,
+    });
+    const adjacent = base.grid
+      .neighbours4(base.heroPos)
+      .find((cell) => base.grid.isWalkable(cell));
+    expect(adjacent).toBeDefined();
+
+    const snapshot = base.snapshot();
+    snapshot.enemies[0]!.pos = adjacent!;
+    snapshot.enemies[0]!.stats.hp = 1;
+    const w = GameWorld.fromSnapshot(snapshot, contentWithFastWeapon);
+
+    const dx = w.grid.xOf(adjacent!) - w.grid.xOf(w.heroPos);
+    const dy = w.grid.yOf(adjacent!) - w.grid.yOf(w.heroPos);
+    expect(w.tryMoveHero(dx, dy)).toBe(true);
+
+    expect(w.enemies.length).toBe(0);
+    expect(w.heroExperience).toBe(1);
+    expect(w.heroLevel).toBe(1);
+  });
+
+  it("blocks EXP from enemies below the hero's current level", () => {
+    const cappedContent = ContentDatabase.fromRaw(
+      [
+        {
+          id: "training_dummy",
+          name: "Training Dummy",
+          maxHealth: 1,
+          speed: 1,
+          vision: 0,
+          accuracy: 0,
+          evasion: 0,
+          damageMin: 0,
+          damageMax: 0,
+          armor: 0,
+          spawnWeight: 1,
+          minDepth: 1,
+          expReward: 10,
+          maxLevelCap: 1,
+        },
+      ],
+      [
+        {
+          id: "short_sword",
+          name: "Test Blade",
+          type: "weapon",
+          damageMin: 10,
+          damageMax: 10,
+        },
+      ],
+    );
+    const base = new GameWorld("WORLD-EXP-CAP", cappedContent, { enemyCount: 1 });
+    const adjacent = base.grid
+      .neighbours4(base.heroPos)
+      .find((cell) => base.grid.isWalkable(cell));
+    expect(adjacent).toBeDefined();
+
+    const snapshot = base.snapshot();
+    snapshot.hero.level = 2;
+    snapshot.enemies[0]!.pos = adjacent!;
+    snapshot.enemies[0]!.stats.hp = 1;
+    const w = GameWorld.fromSnapshot(snapshot, cappedContent);
+
+    const dx = w.grid.xOf(adjacent!) - w.grid.xOf(w.heroPos);
+    const dy = w.grid.yOf(adjacent!) - w.grid.yOf(w.heroPos);
+    expect(w.tryMoveHero(dx, dy)).toBe(true);
+
+    expect(w.enemies.length).toBe(0);
+    expect(w.heroExperience).toBe(0);
+  });
+
+  it("quaffing Potion of Strength permanently increases strength and refreshes encumbrance", () => {
+    const base = new GameWorld("WORLD-STRENGTH-POTION", contentWithHeavyStarter, {
+      enemyCount: 0,
+    });
+    expect(base.heroStats.strength).toBe(15);
+    expect(base.heroStats.attackDelay).toBeCloseTo(1.2);
+
+    const snapshot = base.snapshot();
+    snapshot.inventory.itemIds.push("potion_strength");
+    const w = GameWorld.fromSnapshot(snapshot, contentWithHeavyStarter);
+
+    expect(w.consumeItem("potion_strength")).toBe(true);
+
+    expect(w.heroStats.baseOf("strength")).toBe(16);
+    expect(w.heroStats.strength).toBe(16);
+    expect(w.heroStats.attackDelay).toBe(1);
+    expect(w.inventory.all.some((item) => item.id === "potion_strength")).toBe(false);
   });
 
   it("rangedAttack damages an enemy through a clear line of fire", () => {

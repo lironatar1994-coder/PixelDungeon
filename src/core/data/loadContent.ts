@@ -31,10 +31,11 @@ export async function loadContentDatabase(
     }
   };
 
-  const [rawEnemies, rawItems] = await Promise.all([
+  const [rawEnemies, rawItems, rawHeroes] = await Promise.all([
     safe("enemies.json"),
     safe("items.json"),
+    safe("heroes.json"),
   ]);
 
-  return ContentDatabase.fromRaw(rawEnemies, rawItems);
+  return ContentDatabase.fromRaw(rawEnemies, rawItems, rawHeroes);
 }

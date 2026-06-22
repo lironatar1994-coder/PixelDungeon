@@ -11,6 +11,10 @@
  * effective value is `base + sum(modifiers)`. Nothing ever writes the base, so
  * when a modifier expires or an item is unequipped the entity snaps back to its
  * true stats with zero risk of drift or corruption.
+ *
+ * Permanent progression (level-ups and Potion of Strength) is the one
+ * controlled exception: it mutates the true base through `increaseBase`, never
+ * through ad hoc external writes.
  */
 
 export type StatKey =
@@ -21,7 +25,8 @@ export type StatKey =
   | "damageMax"
   | "armor"
   | "speed"
-  | "attackDelay";
+  | "attackDelay"
+  | "strength";
 
 export interface BaseStats {
   maxHealth: number;
@@ -33,6 +38,7 @@ export interface BaseStats {
   speed?: number;
   /** Attack action multiplier. 1 = normal, 0.5 = twice as fast, 2 = twice as slow. */
   attackDelay?: number;
+  strength?: number;
 }
 
 export interface StatModifier {
@@ -121,8 +127,17 @@ export class CombatStats {
   get attackDelay(): number {
     return Math.max(0.0001, this.effective("attackDelay"));
   }
+  get strength(): number {
+    return Math.max(0, this.effective("strength"));
+  }
 
   // --- modifiers ---
+
+  increaseBase(stat: StatKey, amount: number): void {
+    const next = this.baseValue(stat) + amount;
+    this.base[stat] = stat === "maxHealth" ? Math.max(1, next) : Math.max(0, next);
+    this.clampHp();
+  }
 
   addModifier(modifier: StatModifier): void {
     this.modifiers.push({ ...modifier });
@@ -176,6 +191,12 @@ export class CombatStats {
     return this.hp - before;
   }
 
+  healToFull(): number {
+    const before = this.hp;
+    this.hp = this.maxHealth;
+    return this.hp - before;
+  }
+
   /** Keep current hp within [0, maxHealth] after a maxHealth modifier change. */
   private clampHp(): void {
     if (this.hp > this.maxHealth) this.hp = this.maxHealth;
@@ -185,6 +206,7 @@ export class CombatStats {
   private baseValue(stat: StatKey): number {
     if (stat === "speed") return this.base.speed ?? 1;
     if (stat === "attackDelay") return this.base.attackDelay ?? 1;
+    if (stat === "strength") return this.base.strength ?? 15;
     return this.base[stat];
   }
 }

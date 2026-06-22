@@ -1,0 +1,20 @@
+[
+  {
+    "id": "warrior",
+    "name": "Warrior",
+    "maxHealth": 20,
+    "strength": 15,
+    "sprite": "warrior",
+    "startingItems": ["short_sword", "ration"],
+    "description": "A resilient melee fighter with a reliable blade."
+  },
+  {
+    "id": "mage",
+    "name": "Mage",
+    "maxHealth": 15,
+    "strength": 15,
+    "sprite": "mage",
+    "startingItems": ["quarterstaff", "ration"],
+    "description": "A fragile scholar who starts with a defensive staff."
+  }
+]

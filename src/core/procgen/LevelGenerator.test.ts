@@ -72,4 +72,30 @@ describe("generateLevel", () => {
     expect(level.grid.get(level.exit)).toBe(Terrain.FLOOR);
     expect(level.entrance).not.toBe(level.exit);
   });
+
+  it("places deterministic loot only on walkable non-stair cells", () => {
+    const a = generateLevel(40, 40, new RNG("loot"), undefined, {
+      itemIds: ["ration", "potion_healing"],
+      guaranteedItemIds: ["potion_strength"],
+      itemCount: 3,
+    });
+    const b = generateLevel(40, 40, new RNG("loot"), undefined, {
+      itemIds: ["ration", "potion_healing"],
+      guaranteedItemIds: ["potion_strength"],
+      itemCount: 3,
+    });
+
+    expect(a.groundItems).toEqual(b.groundItems);
+    expect(a.groundItems).toHaveLength(4);
+    expect(a.groundItems.some((item) => item.itemId === "potion_strength")).toBe(true);
+
+    const cells = new Set<number>();
+    for (const item of a.groundItems) {
+      expect(a.grid.isWalkable(item.cell)).toBe(true);
+      expect(item.cell).not.toBe(a.entrance);
+      expect(item.cell).not.toBe(a.exit);
+      expect(cells.has(item.cell)).toBe(false);
+      cells.add(item.cell);
+    }
+  });
 });

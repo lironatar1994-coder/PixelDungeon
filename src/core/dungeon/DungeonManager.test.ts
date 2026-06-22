@@ -66,6 +66,23 @@ describe("DungeonManager", () => {
     expect(seeds.size).toBe(DUNGEON_DEPTH);
   });
 
+  it("guarantees exactly two Potions of Strength across depths 1..5", () => {
+    const d = new DungeonManager("STRENGTH-LOOT", {
+      itemIds: ["ration", "potion_healing"],
+      strengthPotionId: "potion_strength",
+    });
+
+    const strengthDepths: number[] = [];
+    for (let depth = 1; depth <= 5; depth++) {
+      const level = d.levelAt(depth);
+      const count = level.groundItems.filter((item) => item.itemId === "potion_strength").length;
+      if (count > 0) strengthDepths.push(depth);
+      expect(count).toBeLessThanOrEqual(1);
+    }
+
+    expect(strengthDepths).toHaveLength(2);
+  });
+
   it("rejects out-of-range depths", () => {
     const d = new DungeonManager("RANGE");
     expect(() => d.levelAt(0)).toThrow();

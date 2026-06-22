@@ -17,6 +17,7 @@ import { Terrain } from "@/core/grid/terrain";
 import { Rect } from "@/core/grid/Rect";
 import type { RNG } from "@/core/rng/Mulberry32";
 import { findPath } from "@/core/pathfinding/AStar";
+import type { GroundItem } from "@/core/dungeon/Level";
 import {
   buildBSP,
   planConnections,
@@ -29,6 +30,16 @@ export interface GeneratedLevel {
   rooms: Rect[];
   entrance: number;
   exit: number;
+  groundItems: GroundItem[];
+}
+
+export interface LootGenerationOptions {
+  /** Random loot pool. Potion of Strength may be excluded by the caller. */
+  itemIds?: readonly string[];
+  /** Items that must appear on this floor, placed before random loot. */
+  guaranteedItemIds?: readonly string[];
+  /** Random item count; defaults to a small deterministic 2..4 when itemIds exist. */
+  itemCount?: number;
 }
 
 export function generateLevel(
@@ -36,6 +47,7 @@ export function generateLevel(
   height: number,
   rng: RNG,
   opts: BSPOptions = DEFAULT_BSP_OPTIONS,
+  loot: LootGenerationOptions = {},
 ): GeneratedLevel {
   const grid = new Grid(width, height, Terrain.WALL);
 
@@ -118,5 +130,42 @@ export function generateLevel(
   grid.set(entrance, Terrain.FLOOR);
   grid.set(exit, Terrain.FLOOR);
 
-  return { grid, rooms, entrance, exit };
+  const groundItems = generateGroundItems(grid, rng, entrance, exit, loot);
+
+  return { grid, rooms, entrance, exit, groundItems };
+}
+
+function generateGroundItems(
+  grid: Grid,
+  rng: RNG,
+  entrance: number,
+  exit: number,
+  loot: LootGenerationOptions,
+): GroundItem[] {
+  const itemIds = loot.itemIds ?? [];
+  const guaranteedItemIds = loot.guaranteedItemIds ?? [];
+  const randomCount = itemIds.length > 0
+    ? Math.max(0, Math.floor(loot.itemCount ?? rng.range(2, 4)))
+    : 0;
+  if (guaranteedItemIds.length === 0 && randomCount === 0) return [];
+
+  const candidates: number[] = [];
+  for (let cell = 0; cell < grid.length; cell++) {
+    if (cell !== entrance && cell !== exit && grid.isWalkable(cell)) {
+      candidates.push(cell);
+    }
+  }
+  rng.shuffle(candidates);
+
+  const groundItems: GroundItem[] = [];
+  const place = (itemId: string): void => {
+    const cell = candidates.pop();
+    if (cell === undefined) return;
+    groundItems.push({ cell, itemId });
+  };
+
+  for (const itemId of guaranteedItemIds) place(itemId);
+  for (let i = 0; i < randomCount; i++) place(rng.pick(itemIds));
+
+  return groundItems;
 }

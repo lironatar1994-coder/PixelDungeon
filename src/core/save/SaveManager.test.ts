@@ -58,6 +58,16 @@ const content = ContentDatabase.fromRaw(
     { id: "potion_healing", name: "Potion of Healing", type: "potion", heal: 15 },
     { id: "ration", name: "Ration of Food", type: "food", nutrition: 300 },
   ],
+  [
+    {
+      id: "tester",
+      name: "Tester",
+      maxHealth: 20,
+      strength: 15,
+      sprite: "warrior",
+      startingItems: ["short_sword", "leather_armor", "potion_healing", "ration"],
+    },
+  ],
 );
 
 function moveOnce(world: GameWorld): void {

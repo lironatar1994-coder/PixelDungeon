@@ -12,6 +12,8 @@
     "armor": 0,
     "spawnWeight": 4,
     "minDepth": 1,
+    "expReward": 2,
+    "maxLevelCap": 5,
     "description": "A quick, fragile scavenger. Fast and evasive but hits softly."
   },
   {
@@ -27,6 +29,8 @@
     "armor": 2,
     "spawnWeight": 2,
     "minDepth": 1,
+    "expReward": 5,
+    "maxLevelCap": 10,
     "description": "A slow, relentless husk. Easy to dodge but armored and hits hard."
   },
   {
@@ -42,6 +46,8 @@
     "armor": 1,
     "spawnWeight": 3,
     "minDepth": 2,
+    "expReward": 2,
+    "maxLevelCap": 8,
     "description": "A balanced hunter with keen eyes; appears deeper in the dungeon."
   }
 ]

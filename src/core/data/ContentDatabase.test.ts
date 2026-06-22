@@ -12,17 +12,22 @@ describe("ContentDatabase", () => {
   it("indexes enemies and items by id", () => {
     const db = ContentDatabase.fromRaw(RAW_ENEMIES, [
       { id: "sword", name: "Short Sword", type: "weapon" },
+    ], [
+      { id: "mage", name: "Mage", maxHealth: 15, strength: 15, sprite: "mage", startingItems: ["staff"] },
     ]);
     expect(db.getEnemy("rat")?.name).toBe("Sewer Rat");
     expect(db.getItem("sword")?.type).toBe("weapon");
+    expect(db.getHero("mage")?.maxHealth).toBe(15);
+    expect(db.allHeroes.length).toBe(1);
     expect(db.allEnemies.length).toBe(3);
   });
 
-  it("falls back to a built-in default enemy when none load", () => {
+  it("falls back to built-in defaults when content is missing", () => {
     const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const db = ContentDatabase.fromRaw(null, null);
     expect(db.allEnemies.length).toBe(1);
     expect(db.allEnemies[0]!.id).toBe(ContentDatabase.DEFAULT_ENEMY.id);
+    expect(db.defaultHero.id).toBe(ContentDatabase.DEFAULT_HERO.id);
     spy.mockRestore();
   });
 

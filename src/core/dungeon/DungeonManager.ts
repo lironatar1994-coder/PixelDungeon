@@ -26,6 +26,13 @@ export interface DungeonSnapshot {
   levels: LevelSnapshot[];
 }
 
+export interface DungeonLootConfig {
+  /** Random floor loot pool. Should contain validated item ids only. */
+  itemIds?: readonly string[];
+  /** Progression potion id, if present in content. Spawned exactly twice on depths 1..5. */
+  strengthPotionId?: string | null;
+}
+
 /** Floors grow modestly with depth (square), clamped to a sane range. */
 function sizeForDepth(depth: number): number {
   return 32 + Math.min(depth, 14); // 33..46
@@ -37,11 +44,19 @@ export class DungeonManager {
 
   /** levels[d] is the cached floor at depth d (1..26); null until generated. */
   private readonly levels: (Level | null)[];
+  private readonly lootItemIds: string[];
+  private readonly strengthPotionId: string | null;
+  private readonly strengthPotionDepths: Set<number>;
   private currentDepth = 1;
 
-  constructor(seed: string) {
+  constructor(seed: string, loot: DungeonLootConfig = {}) {
     this.seed = seed;
     this.levels = new Array<Level | null>(DUNGEON_DEPTH + 1).fill(null);
+    this.lootItemIds = [...new Set(loot.itemIds ?? [])];
+    this.strengthPotionId = loot.strengthPotionId ?? null;
+    this.strengthPotionDepths = this.strengthPotionId
+      ? chooseStrengthPotionDepths(seed)
+      : new Set<number>();
   }
 
   get depth(): number {
@@ -77,7 +92,14 @@ export class DungeonManager {
     if (!level) {
       const depthSeed = this.seedForDepth(depth);
       const size = sizeForDepth(depth);
-      const generated = generateLevel(size, size, new RNG(depthSeed));
+      const guaranteedItemIds =
+        this.strengthPotionId && this.strengthPotionDepths.has(depth)
+          ? [this.strengthPotionId]
+          : [];
+      const generated = generateLevel(size, size, new RNG(depthSeed), undefined, {
+        itemIds: this.lootItemIds,
+        guaranteedItemIds,
+      });
       level = new Level({
         depth,
         seed: depthSeed,
@@ -85,6 +107,7 @@ export class DungeonManager {
         rooms: generated.rooms,
         entrance: generated.entrance,
         exit: generated.exit,
+        groundItems: generated.groundItems,
       });
       this.levels[depth] = level;
     }
@@ -128,8 +151,8 @@ export class DungeonManager {
     };
   }
 
-  static fromSnapshot(snapshot: DungeonSnapshot): DungeonManager {
-    const dungeon = new DungeonManager(snapshot.seed);
+  static fromSnapshot(snapshot: DungeonSnapshot, loot: DungeonLootConfig = {}): DungeonManager {
+    const dungeon = new DungeonManager(snapshot.seed, loot);
     for (const levelSnapshot of snapshot.levels) {
       if (levelSnapshot.depth < 1 || levelSnapshot.depth > DUNGEON_DEPTH) continue;
       const grid = Grid.fromSnapshot(
@@ -142,4 +165,10 @@ export class DungeonManager {
     dungeon.travelTo(snapshot.depth);
     return dungeon;
   }
+}
+
+function chooseStrengthPotionDepths(seed: string): Set<number> {
+  const depths = [1, 2, 3, 4, 5];
+  new RNG(`${seed}:strength-potions`).shuffle(depths);
+  return new Set(depths.slice(0, 2));
 }

@@ -8,8 +8,8 @@
  * something valid rather than crash. No fetch/DOM here — construct it from
  * already-parsed data (see loadContent.ts for the async wiring).
  */
-import type { EnemyDef, ItemDef } from "./types";
-import { parseEnemies, parseItems } from "./parse";
+import type { EnemyDef, HeroDef, ItemDef } from "./types";
+import { parseEnemies, parseHeroes, parseItems } from "./parse";
 import type { RNG } from "@/core/rng/Mulberry32";
 
 export class ContentDatabase {
@@ -27,24 +27,48 @@ export class ContentDatabase {
     armor: 0,
     spawnWeight: 1,
     minDepth: 1,
+    expReward: 1,
+    maxLevelCap: 30,
     description: "A fallback creature used when content failed to load.",
+  };
+
+  static readonly DEFAULT_HERO: HeroDef = {
+    id: "warrior",
+    name: "Warrior",
+    maxHealth: 20,
+    strength: 15,
+    sprite: "warrior",
+    startingItems: ["short_sword", "ration"],
+    description: "A resilient melee fighter.",
   };
 
   private readonly enemyList: EnemyDef[];
   private readonly enemyById: Map<string, EnemyDef>;
   private readonly itemList: ItemDef[];
   private readonly itemById: Map<string, ItemDef>;
+  private readonly heroList: HeroDef[];
+  private readonly heroById: Map<string, HeroDef>;
 
-  constructor(enemies: EnemyDef[], items: ItemDef[]) {
+  constructor(enemies: EnemyDef[], items: ItemDef[], heroes: HeroDef[] = []) {
     this.enemyList = enemies.length > 0 ? enemies : [ContentDatabase.DEFAULT_ENEMY];
     this.enemyById = new Map(this.enemyList.map((e) => [e.id, e]));
     this.itemList = items;
     this.itemById = new Map(this.itemList.map((i) => [i.id, i]));
+    this.heroList = heroes.length > 0 ? heroes : [ContentDatabase.DEFAULT_HERO];
+    this.heroById = new Map(this.heroList.map((h) => [h.id, h]));
   }
 
   /** Build from raw (untrusted) JSON values, running them through the parser. */
-  static fromRaw(rawEnemies: unknown, rawItems: unknown): ContentDatabase {
-    return new ContentDatabase(parseEnemies(rawEnemies), parseItems(rawItems));
+  static fromRaw(
+    rawEnemies: unknown,
+    rawItems: unknown,
+    rawHeroes: unknown = null,
+  ): ContentDatabase {
+    return new ContentDatabase(
+      parseEnemies(rawEnemies),
+      parseItems(rawItems),
+      parseHeroes(rawHeroes),
+    );
   }
 
   getEnemy(id: string): EnemyDef | undefined {
@@ -61,6 +85,18 @@ export class ContentDatabase {
 
   get allItems(): readonly ItemDef[] {
     return this.itemList;
+  }
+
+  getHero(id: string): HeroDef | undefined {
+    return this.heroById.get(id);
+  }
+
+  get defaultHero(): HeroDef {
+    return this.heroList[0] ?? ContentDatabase.DEFAULT_HERO;
+  }
+
+  get allHeroes(): readonly HeroDef[] {
+    return this.heroList;
   }
 
   /**

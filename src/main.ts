@@ -12,6 +12,7 @@
  */
 import "./style.css";
 import { EventBus } from "@/events/EventBus";
+import { initializeTelemetry } from "@/events/TelemetryManager";
 import { GameLoop } from "@/core/GameLoop";
 import { Renderer } from "@/render/Renderer";
 import {
@@ -20,7 +21,7 @@ import {
   queueCombatStrikeAnimation,
   type MapView,
 } from "@/render/MapScene";
-import { AssetLoader } from "@/render/AssetLoader";
+import { AssetLoader, type SpriteKey } from "@/render/AssetLoader";
 import {
   clampZoomMultiplier,
   computeCameraViewport,
@@ -35,6 +36,7 @@ import {
 import type { Enemy } from "@/core/actors/Enemy";
 import { loadContentDatabase } from "@/core/data/loadContent";
 import { SaveManager } from "@/core/save/SaveManager";
+import { HistoryManager } from "@/core/save/HistoryManager";
 import { findPath } from "@/core/pathfinding/AStar";
 import { planTap } from "@/input/tapPlan";
 import { InputManager } from "@/input/InputManager";
@@ -61,9 +63,13 @@ async function boot(): Promise<void> {
   }
 
   const bus = new EventBus();
+  const teardownTelemetry = initializeTelemetry(bus);
   const content = await loadContentDatabase(`${import.meta.env.BASE_URL}configs`);
   console.info(
     `[content] loaded ${content.allEnemies.length} enemy types, ${content.allItems.length} item types`,
+  );
+  console.info(
+    `[content] heroes: ${content.allHeroes.map((h) => h.name).join(", ")}`,
   );
   console.info(
     `[content] enemies: ${content.allEnemies
@@ -73,6 +79,7 @@ async function boot(): Promise<void> {
 
   let requestedSeed = new URLSearchParams(location.search).get("seed");
   const saveManager = new SaveManager(window.localStorage);
+  const historyManager = new HistoryManager(window.localStorage);
   const publishLog = (line: string) => bus.emit("combat:log", { line });
   const autoSave = (changedWorld: GameWorld) => saveManager.save(changedWorld);
   const emitHeroDamaged = (info: HeroDamagedInfo) => bus.emit("hero:damaged", info);
@@ -99,6 +106,7 @@ async function boot(): Promise<void> {
   let autoWalkElapsed = 0;
   let zoomMultiplier = 1;
   let pinchDistance: number | null = null;
+  let gameOverReported = false;
   let menu: MainMenu | null = null;
   let overlay: GameOverlay | null = null;
 
@@ -123,6 +131,7 @@ async function boot(): Promise<void> {
         hp: e.hp,
         maxHealth: e.maxHealth,
       })),
+      groundItems: current.level.groundItems,
       visible: current.fov.visible,
       explored: current.fov.exploredMemory,
       selectedCell,
@@ -136,6 +145,7 @@ async function boot(): Promise<void> {
         armor: current.heroStats.armor,
         weaponName: current.inventory.equippedIn("weapon")?.name ?? "(none)",
         armorName: current.inventory.equippedIn("armor")?.name ?? "(none)",
+        sprite: heroSpriteKey(current.heroSprite),
         alive: current.heroAlive,
       },
       log: current.log,
@@ -163,6 +173,10 @@ async function boot(): Promise<void> {
         damageMin: current.heroStats.damageMin,
         damageMax: current.heroStats.damageMax,
         armor: current.heroStats.armor,
+        strength: current.heroStats.strength,
+        level: current.heroLevel,
+        experience: current.heroExperience,
+        maxExperience: current.heroMaxExperience,
         weaponName: current.inventory.equippedIn("weapon")?.name ?? "Unarmed",
         armorName: current.inventory.equippedIn("armor")?.name ?? "Unarmored",
         alive: current.heroAlive,
@@ -191,6 +205,7 @@ async function boot(): Promise<void> {
     seed = nextSeed;
     selectedCell = null;
     targetingMode = null;
+    gameOverReported = false;
     clearCombatAnimations();
     cancelAutoWalk();
 
@@ -210,15 +225,19 @@ async function boot(): Promise<void> {
       },
       assets,
     );
+    bus.emit("game:start", {});
   };
 
-  const startNewRun = (): void => {
+  const startNewRun = (heroId: string): void => {
     saveManager.clear();
     const nextSeed = requestedSeed ?? createRunSeed();
-    const nextWorld = new GameWorld(nextSeed, content, worldCallbacks);
+    const nextWorld = new GameWorld(nextSeed, content, {
+      ...worldCallbacks,
+      heroId,
+    });
     saveManager.save(nextWorld);
     mountPlaying(nextWorld, nextSeed);
-    console.info(`[boot] New run seed="${nextSeed}".`);
+    console.info(`[boot] New ${nextWorld.heroClassName} run seed="${nextSeed}".`);
   };
 
   const continueRun = (): void => {
@@ -236,7 +255,11 @@ async function boot(): Promise<void> {
     saveManager.clear();
     clearSeedParam();
     const nextSeed = createRunSeed();
-    const nextWorld = new GameWorld(nextSeed, content, worldCallbacks);
+    const heroId = world?.heroProfileId ?? content.defaultHero.id;
+    const nextWorld = new GameWorld(nextSeed, content, {
+      ...worldCallbacks,
+      heroId,
+    });
     saveManager.save(nextWorld);
     mountPlaying(nextWorld, nextSeed);
     console.info(`[boot] Restarted run seed="${nextSeed}".`);
@@ -252,7 +275,7 @@ async function boot(): Promise<void> {
     overlay?.destroy();
     overlay = null;
     menu?.destroy();
-    menu = new MainMenu(saveManager.hasValidRun(content), {
+    menu = new MainMenu(saveManager.hasValidRun(content), content.allHeroes, historyManager.list(), {
       newGame: startNewRun,
       continueGame: continueRun,
     });
@@ -463,6 +486,11 @@ async function boot(): Promise<void> {
       return;
     }
 
+    if (cell === current.heroPos) {
+      current.tryPickUpItem();
+      return;
+    }
+
     // Decide what the tap means (pure), then execute via intents only.
     const plan = planTap(
       {
@@ -541,6 +569,29 @@ async function boot(): Promise<void> {
     if (appState === "Playing") cancelAutoWalk();
   });
 
+  bus.on("hero:damaged", ({ source, hp }) => {
+    if (appState !== "Playing" || !world || hp > 0 || gameOverReported) {
+      return;
+    }
+    gameOverReported = true;
+    const inventory = world.inventory.all.map((item) => item.id);
+    historyManager.add({
+      class: world.heroClassName,
+      heroLevel: world.heroLevel,
+      depthReached: world.depth,
+      killerName: source,
+      inventoryItemIds: inventory,
+    });
+    bus.emit("game:over", {
+      class: world.heroClassName,
+      hero_level: world.heroLevel,
+      killer: source,
+      depth: world.depth,
+      inventory,
+      turns: Math.round(world.snapshot().queue.now),
+    });
+  });
+
   bus.on("ui:quickslot", () => {
     startTargetingMode("ranged");
   });
@@ -610,6 +661,7 @@ async function boot(): Promise<void> {
   window.addEventListener(
     "beforeunload",
     () => {
+      teardownTelemetry();
       overlay?.destroy();
       menu?.destroy();
     },
@@ -639,6 +691,11 @@ function requireWorld(world: GameWorld | null): GameWorld {
 
 function touchDistance(a: Touch, b: Touch): number {
   return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+}
+
+function heroSpriteKey(sprite: string): SpriteKey {
+  if (sprite === "mage") return "mageHero";
+  return "hero";
 }
 
 void boot();

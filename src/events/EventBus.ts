@@ -17,6 +17,17 @@ export interface GameEvents {
   "loop:frame": { dt: number; elapsed: number };
   /** Fired when the drawable surface changes size (window resize / DPR). */
   "render:resize": { width: number; height: number };
+  /** A playable run/session has entered the Playing state. */
+  "game:start": {};
+  /** The hero died and the run ended. */
+  "game:over": {
+    class: string;
+    hero_level: number;
+    depth: number;
+    killer: string;
+    inventory: string[];
+    turns: number;
+  };
   /** A pointer that fell through all UI layers to the game world. */
   "input:world": { x: number; y: number };
   /** A pointer consumed by a UI layer (the world must NOT react to it). */

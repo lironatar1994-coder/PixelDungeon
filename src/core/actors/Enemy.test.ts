@@ -22,6 +22,8 @@ function def(over: Partial<EnemyDef> = {}): EnemyDef {
     armor: 0,
     spawnWeight: 1,
     minDepth: 1,
+    expReward: 1,
+    maxLevelCap: 30,
     description: "",
     ...over,
   };

@@ -6,7 +6,7 @@ import { fileURLToPath, URL } from "node:url";
 // headless test runner (Vitest). Directive 3 requires logic to be
 // testable without a browser, so the test environment is "node".
 export default defineConfig({
-  base: "/pixel-dungeon/",
+  base: "/dungeon/",
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),

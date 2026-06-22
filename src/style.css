@@ -113,6 +113,98 @@ body {
   margin: 30px 0 14px;
 }
 
+.class-select-panel,
+.history-panel {
+  margin: 14px 0;
+  padding-top: 12px;
+  border-top: 1px solid rgba(244, 211, 138, 0.2);
+}
+
+.class-select-panel h2,
+.history-panel h2 {
+  margin: 0 0 10px;
+  color: #f4d38a;
+  font-size: 18px;
+}
+
+.class-select-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.class-card {
+  min-height: 116px;
+  border: 8px solid transparent;
+  border-image: var(--spd-button-frame-grey) 4 fill / 8px / 0 stretch;
+  padding: 10px;
+  color: #f5ebd0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font: 13px "SPD Pixel", "Trebuchet MS", "Segoe UI", sans-serif;
+}
+
+.class-card strong,
+.class-card span,
+.class-card small,
+.history-row strong,
+.history-row span,
+.history-row small {
+  display: block;
+}
+
+.class-card strong {
+  color: #fff1b7;
+  font-size: 16px;
+}
+
+.class-card span {
+  margin-top: 7px;
+  color: #89c7b3;
+}
+
+.class-card small {
+  margin-top: 8px;
+  color: #a9b7aa;
+  line-height: 1.35;
+}
+
+.class-card:hover {
+  filter: brightness(1.18);
+}
+
+.history-list {
+  display: grid;
+  gap: 8px;
+  max-height: min(260px, 36vh);
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.history-row {
+  border: 8px solid transparent;
+  border-image: var(--spd-button-frame) 4 fill / 8px / 0 stretch;
+  padding: 8px 10px;
+}
+
+.history-row strong {
+  color: #fff1b7;
+  font-size: 13px;
+}
+
+.history-row span {
+  margin-top: 5px;
+  color: #f0eadb;
+  font-size: 12px;
+}
+
+.history-row small,
+.history-empty {
+  color: #a9b7aa;
+  font-size: 11px;
+}
+
 .menu-button {
   border: 8px solid transparent;
   border-image: var(--spd-button-frame) 4 fill / 8px / 0 stretch;
@@ -719,6 +811,10 @@ body {
 
   .main-menu-title h1 {
     font-size: 36px;
+  }
+
+  .class-select-grid {
+    grid-template-columns: 1fr;
   }
 
   .ui-hud {

@@ -14,6 +14,10 @@ export interface OverlayState {
     damageMin: number;
     damageMax: number;
     armor: number;
+    strength: number;
+    level: number;
+    experience: number;
+    maxExperience: number;
     weaponName: string;
     armorName: string;
     alive: boolean;
@@ -294,6 +298,9 @@ export class GameOverlay {
     stats.className = "hero-stat-grid";
     for (const [label, value] of [
       ["HP", `${state.hero.hp}/${state.hero.maxHealth}`],
+      ["Level", String(state.hero.level)],
+      ["EXP", `${state.hero.experience}/${state.hero.maxExperience}`],
+      ["Strength", String(state.hero.strength)],
       ["Accuracy", String(state.hero.accuracy)],
       ["Evasion", String(state.hero.evasion)],
       ["Damage", `${state.hero.damageMin}-${state.hero.damageMax}`],
@@ -567,8 +574,12 @@ export class GameOverlay {
 }
 
 function itemDescription(item: ItemDef): string {
-  if (item.type === "weapon") return `Damage +${item.damageMin ?? 0}-${item.damageMax ?? 0}`;
-  if (item.type === "armor") return `Armor +${item.defense ?? 0}`;
+  const strength = typeof item.strengthRequired === "number" ? `, STR ${item.strengthRequired}` : "";
+  if (item.type === "weapon") return `Damage +${item.damageMin ?? 0}-${item.damageMax ?? 0}${strength}`;
+  if (item.type === "armor") return `Armor +${item.defense ?? 0}${strength}`;
+  if (item.type === "potion" && typeof item.strengthBonus === "number") {
+    return `Strength +${item.strengthBonus}`;
+  }
   if (item.type === "potion") return `Heals ${item.heal ?? 0}`;
   if (item.type === "food") return "Ration";
   return "Miscellaneous";

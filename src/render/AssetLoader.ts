@@ -4,6 +4,7 @@ import type { EnemyState } from "@/core/actors/Enemy";
 export type SpriteSheetKey =
   | "tiles"
   | "warrior"
+  | "mage"
   | "rat"
   | "undead"
   | "items"
@@ -16,14 +17,17 @@ export type SpriteKey =
   | "wall"
   | "door"
   | "hero"
+  | "mageHero"
   | "rat"
   | "zombie"
   | "heroPortrait"
   | "entrance"
   | "exit"
   | "shortSword"
+  | "quarterstaff"
   | "leatherArmor"
   | "healingPotion"
+  | "strengthPotion"
   | "ration"
   | "uiInventory"
   | "uiWait"
@@ -64,6 +68,7 @@ const BASE = import.meta.env.BASE_URL;
 const SHEET_URLS: Record<SpriteSheetKey, string> = {
   tiles: `${BASE}assets/tiles_sewers.png`,
   warrior: `${BASE}assets/warrior.png`,
+  mage: `${BASE}assets/mage.png`,
   rat: `${BASE}assets/rat.png`,
   undead: `${BASE}assets/undead.png`,
   items: `${BASE}assets/items.png`,
@@ -99,6 +104,7 @@ const SPRITES: Record<SpriteKey, SpriteRect> = {
 
   // HeroSprite.java / RatSprite.java / UndeadSprite.java idle frame zero.
   hero: { sheet: "warrior", x: 0, y: 0, w: 12, h: 15 },
+  mageHero: { sheet: "mage", x: 0, y: 0, w: 12, h: 15 },
   // HeroSprite.avatar(...) crops the class sheet at x=1,y=0,w=12,h=15 for the base portrait.
   heroPortrait: { sheet: "warrior", x: 1, y: 0, w: 12, h: 15 },
   rat: { sheet: "rat", x: 0, y: 0, w: 16, h: 15 },
@@ -106,10 +112,12 @@ const SPRITES: Record<SpriteKey, SpriteRect> = {
 
   // ItemSpriteSheet.java atlas coordinates.
   shortSword: sheetRect("items", xy(9, 7), 16, 13, 13),
+  quarterstaff: sheetRect("items", xy(9, 7) + 3, 16, 16, 16),
   leatherArmor: sheetRect("items", xy(1, 12) + 1, 16, 14, 13),
   ration: sheetRect("items", xy(1, 28) + 5, 16, 16, 12),
 
   // PotionOfHealing.java uses ItemSpriteSheet.Icons.POTION_HEALING.
+  strengthPotion: sheetRect("itemIcons", xy(1, 6), 8, 7, 7),
   healingPotion: sheetRect("itemIcons", xy(1, 6) + 1, 8, 6, 7),
 
   // Toolbar.java: btnInventory.icon(160,0,16,16), btnWait.icon(176,0,16,16).
@@ -125,8 +133,10 @@ const SPRITES: Record<SpriteKey, SpriteRect> = {
 
 const ITEM_SPRITES: Record<string, SpriteKey> = {
   short_sword: "shortSword",
+  quarterstaff: "quarterstaff",
   leather_armor: "leatherArmor",
   potion_healing: "healingPotion",
+  potion_strength: "strengthPotion",
   ration: "ration",
 };
 

@@ -65,6 +65,16 @@ describe("CombatStats component", () => {
     expect(s.attackDelay).toBe(1);
   });
 
+  it("defaults strength to 15 and supports controlled permanent base growth", () => {
+    const s = stats();
+    expect(s.strength).toBe(15);
+    expect(s.baseOf("strength")).toBe(15);
+
+    s.increaseBase("strength", 1);
+    expect(s.strength).toBe(16);
+    expect(s.baseOf("strength")).toBe(16);
+  });
+
   it("never lets an effective stat go negative", () => {
     const s = stats({ armor: 2 });
     s.addModifier({ id: "shred", stat: "armor", amount: -10 });
