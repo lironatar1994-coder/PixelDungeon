@@ -45,6 +45,22 @@ export interface GameEvents {
   "hero:damaged": { amount: number; source: string; hp: number };
   /** UI command shell for future quickslot assignment/use behavior. */
   "ui:quickslot": {};
+  /** Browser-only sound cue requested by UI/orchestrator glue. */
+  "audio:sfx": {
+    cue:
+      | "ui_click"
+      | "hit"
+      | "miss"
+      | "death"
+      | "drink"
+      | "eat"
+      | "descend"
+      | "door"
+      | "pickup"
+      | "health_warn"
+      | "health_critical"
+      | "levelup";
+  };
 }
 
 type EventName = keyof GameEvents;

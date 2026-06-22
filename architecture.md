@@ -734,3 +734,31 @@ Added focused tests for hero profile parsing/indexing, Mage world creation and
 snapshot restore, and history persistence. Verified with `tsc --noEmit` and
 `git diff --check`. Full Vitest startup remains blocked in this managed sandbox
 by esbuild's parent-directory access error while resolving `vite.config.ts`.
+
+### Phase 15 - Curated Original Assets & Audio COMPLETE
+Added a curated original asset pack instead of copying the whole Shattered
+Pixel Dungeon tree. `public/assets/` now includes the next-depth dungeon sheets
+(`tiles_prison.png`, `tiles_caves.png`, `tiles_city.png`, `tiles_halls.png`),
+water/effects/UI support sheets, core SFX (`hit`, `miss`, `death`, `drink`,
+`eat`, `descend`, `item`, health warnings, etc.), and two music tracks reserved
+for a later music manager.
+
+**`AssetLoader`** ([src/render/AssetLoader.ts](src/render/AssetLoader.ts)) now
+loads all five dungeon tile sheets and chooses the active sheet by depth while
+keeping the same terrain sprite coordinates. **`MapScene`**
+([src/render/MapScene.ts](src/render/MapScene.ts)) passes the current depth into
+terrain drawing, so depths 1-5 render Sewers, 6-10 Prison, 11-15 Caves, 16-20
+City, and 21+ Halls without changing core dungeon state.
+
+Added browser-only **`AudioManager`**
+([src/audio/AudioManager.ts](src/audio/AudioManager.ts)). It subscribes to the
+typed **`EventBus`** ([src/events/EventBus.ts](src/events/EventBus.ts)) and
+plays SFX only after user media unlock; core logic remains unaware of audio or
+browser APIs. **`main.ts`** ([src/main.ts](src/main.ts)) emits `audio:sfx` cues
+only after successful UI/world intents such as wait, equip, consume, pickup,
+stairs, and restart, while `AudioManager` listens directly to `combat:strike`,
+`hero:damaged`, and `game:over` for hit/miss, health warning, and death sounds.
+
+Verified with `tsc --noEmit`. Production build uses Vite's runner config loader
+inside this sandbox because the default esbuild config bundler cannot read the
+parent directory; the generated `dist/` is still based at `/dungeon/`.

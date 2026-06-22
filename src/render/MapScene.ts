@@ -158,11 +158,13 @@ export function drawMapScene(
         drawSprite(
           ctx,
           assets,
-          assets.spriteForTerrain(terrain),
+          assets.spriteForTerrain(terrain, view.depth),
           vp.offsetX + x * ts,
           vp.offsetY + y * ts,
           ts,
           visible ? 1 : 0.35,
+          undefined,
+          view.depth,
         );
       }
     }
@@ -186,10 +188,10 @@ export function drawMapScene(
   }
 
   if (view.explored.has(view.entrance)) {
-    drawCell(ctx, assets, vp, grid, view.entrance, "entrance", COLORS.entrance);
+    drawCell(ctx, assets, vp, grid, view.entrance, "entrance", COLORS.entrance, undefined, undefined, view.depth);
   }
   if (view.explored.has(view.exit)) {
-    drawCell(ctx, assets, vp, grid, view.exit, "exit", COLORS.exit);
+    drawCell(ctx, assets, vp, grid, view.exit, "exit", COLORS.exit, undefined, undefined, view.depth);
   }
 
   for (const item of view.groundItems) {
@@ -280,6 +282,7 @@ function drawCell(
   fill: string,
   edge?: string,
   motion?: ActorDrawMotion,
+  depth = 1,
 ): void {
   const ts = vp.tileSize;
   const strike = motion?.actorId
@@ -287,7 +290,7 @@ function drawCell(
     : { pixelOffsetX: 0, pixelOffsetY: 0 };
   const x = vp.offsetX + grid.xOf(cell) * ts + strike.pixelOffsetX;
   const y = vp.offsetY + grid.yOf(cell) * ts + strike.pixelOffsetY;
-  if (assets && drawSprite(ctx, assets, sprite, x, y, ts, 1, motion)) {
+  if (assets && drawSprite(ctx, assets, sprite, x, y, ts, 1, motion, depth)) {
     return;
   }
 
@@ -304,10 +307,11 @@ function drawSprite(
   size: number,
   alpha: number,
   idle?: IdleState,
+  depth = 1,
 ): boolean {
-  const image = assets.imageFor(sprite);
+  const image = assets.imageFor(sprite, depth);
   if (!image) return false;
-  const base = assets.sourceRect(sprite);
+  const base = assets.sourceRect(sprite, depth);
   const motion = idleMotion(sprite, idle);
   const src = motion.useFrameOne ? { ...base, x: base.x + base.w } : base;
   const dx = x + motion.dx * Math.max(1, size / 48);

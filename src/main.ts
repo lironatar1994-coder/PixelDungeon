@@ -13,6 +13,7 @@
 import "./style.css";
 import { EventBus } from "@/events/EventBus";
 import { initializeTelemetry } from "@/events/TelemetryManager";
+import { AudioManager } from "@/audio/AudioManager";
 import { GameLoop } from "@/core/GameLoop";
 import { Renderer } from "@/render/Renderer";
 import {
@@ -64,6 +65,7 @@ async function boot(): Promise<void> {
 
   const bus = new EventBus();
   const teardownTelemetry = initializeTelemetry(bus);
+  const audio = new AudioManager(bus);
   const content = await loadContentDatabase(`${import.meta.env.BASE_URL}configs`);
   console.info(
     `[content] loaded ${content.allEnemies.length} enemy types, ${content.allItems.length} item types`,
@@ -81,6 +83,8 @@ async function boot(): Promise<void> {
   const saveManager = new SaveManager(window.localStorage);
   const historyManager = new HistoryManager(window.localStorage);
   const publishLog = (line: string) => bus.emit("combat:log", { line });
+  const playSfx = (cue: Parameters<typeof bus.emit<"audio:sfx">>[1]["cue"]) =>
+    bus.emit("audio:sfx", { cue });
   const autoSave = (changedWorld: GameWorld) => saveManager.save(changedWorld);
   const emitHeroDamaged = (info: HeroDamagedInfo) => bus.emit("hero:damaged", info);
   const emitCombatStrike = (info: CombatStrikeInfo) => bus.emit("combat:strike", info);
@@ -216,11 +220,32 @@ async function boot(): Promise<void> {
       bus,
       overlayState,
       {
-        equip: (itemId) => requireWorld(world).equipItem(itemId),
-        consume: (itemId) => requireWorld(world).consumeItem(itemId),
-        drop: (itemId) => requireWorld(world).dropItem(itemId),
-        wait: () => requireWorld(world).waitTurn(),
-        quickslot: () => bus.emit("ui:quickslot", {}),
+        equip: (itemId) => {
+          const ok = requireWorld(world).equipItem(itemId);
+          if (ok) playSfx("ui_click");
+          return ok;
+        },
+        consume: (itemId) => {
+          const current = requireWorld(world);
+          const item = current.inventory.all.find((candidate) => candidate.id === itemId);
+          const ok = current.consumeItem(itemId);
+          if (ok) playSfx(item?.type === "food" ? "eat" : "drink");
+          return ok;
+        },
+        drop: (itemId) => {
+          const ok = requireWorld(world).dropItem(itemId);
+          if (ok) playSfx("ui_click");
+          return ok;
+        },
+        wait: () => {
+          const ok = requireWorld(world).waitTurn();
+          if (ok) playSfx("ui_click");
+          return ok;
+        },
+        quickslot: () => {
+          playSfx("ui_click");
+          bus.emit("ui:quickslot", {});
+        },
         restart: restartRun,
       },
       assets,
@@ -229,6 +254,7 @@ async function boot(): Promise<void> {
   };
 
   const startNewRun = (heroId: string): void => {
+    playSfx("ui_click");
     saveManager.clear();
     const nextSeed = requestedSeed ?? createRunSeed();
     const nextWorld = new GameWorld(nextSeed, content, {
@@ -241,6 +267,7 @@ async function boot(): Promise<void> {
   };
 
   const continueRun = (): void => {
+    playSfx("ui_click");
     clearSeedParam();
     const loadedWorld = saveManager.load(content, worldCallbacks);
     if (!loadedWorld) {
@@ -252,6 +279,7 @@ async function boot(): Promise<void> {
   };
 
   function restartRun(): void {
+    playSfx("ui_click");
     saveManager.clear();
     clearSeedParam();
     const nextSeed = createRunSeed();
@@ -487,7 +515,7 @@ async function boot(): Promise<void> {
     }
 
     if (cell === current.heroPos) {
-      current.tryPickUpItem();
+      if (current.tryPickUpItem()) playSfx("pickup");
       return;
     }
 
@@ -647,14 +675,18 @@ async function boot(): Promise<void> {
       return;
     }
     if (e.key === ">" || e.key === ".") {
+      const before = world.depth;
       world.descend();
+      if (world.depth !== before) playSfx("descend");
       selectedCell = null;
     } else if (e.key === "<" || e.key === ",") {
+      const before = world.depth;
       world.ascend();
+      if (world.depth !== before) playSfx("descend");
       selectedCell = null;
     } else if (e.key === "q") {
       e.preventDefault();
-      world.quaffHealing();
+      if (world.quaffHealing()) playSfx("drink");
     }
   });
 
@@ -662,6 +694,7 @@ async function boot(): Promise<void> {
     "beforeunload",
     () => {
       teardownTelemetry();
+      audio.destroy();
       overlay?.destroy();
       menu?.destroy();
     },

@@ -3,6 +3,10 @@ import type { EnemyState } from "@/core/actors/Enemy";
 
 export type SpriteSheetKey =
   | "tiles"
+  | "tilesPrison"
+  | "tilesCaves"
+  | "tilesCity"
+  | "tilesHalls"
   | "warrior"
   | "mage"
   | "rat"
@@ -55,11 +59,11 @@ export interface SpriteSheetAssets {
   readonly ready: boolean;
   readonly tileSize: number;
   canDraw(key: SpriteKey): boolean;
-  imageFor(key: SpriteKey): HTMLImageElement | null;
-  spriteForTerrain(terrain: Terrain): SpriteKey;
+  imageFor(key: SpriteKey, depth?: number): HTMLImageElement | null;
+  spriteForTerrain(terrain: Terrain, depth?: number): SpriteKey;
   spriteForEnemy(enemy: { name: string; state: EnemyState }): SpriteKey;
   spriteForItem(itemId: string): SpriteKey | null;
-  sourceRect(key: SpriteKey): SpriteRect;
+  sourceRect(key: SpriteKey, depth?: number): SpriteRect;
   cssStyleForSprite(key: SpriteKey, scale?: number): SpriteCssStyle | null;
 }
 
@@ -67,6 +71,10 @@ const BASE = import.meta.env.BASE_URL;
 
 const SHEET_URLS: Record<SpriteSheetKey, string> = {
   tiles: `${BASE}assets/tiles_sewers.png`,
+  tilesPrison: `${BASE}assets/tiles_prison.png`,
+  tilesCaves: `${BASE}assets/tiles_caves.png`,
+  tilesCity: `${BASE}assets/tiles_city.png`,
+  tilesHalls: `${BASE}assets/tiles_halls.png`,
   warrior: `${BASE}assets/warrior.png`,
   mage: `${BASE}assets/mage.png`,
   rat: `${BASE}assets/rat.png`,
@@ -178,11 +186,11 @@ export class AssetLoader implements SpriteSheetAssets {
     return this.images.has(SPRITES[key].sheet);
   }
 
-  imageFor(key: SpriteKey): HTMLImageElement | null {
-    return this.images.get(SPRITES[key].sheet) ?? null;
+  imageFor(key: SpriteKey, depth = 1): HTMLImageElement | null {
+    return this.images.get(this.sourceRect(key, depth).sheet) ?? null;
   }
 
-  spriteForTerrain(terrain: Terrain): SpriteKey {
+  spriteForTerrain(terrain: Terrain, _depth = 1): SpriteKey {
     if (terrain === Terrain.FLOOR) return "floor";
     if (terrain === Terrain.DOOR) return "door";
     return "wall";
@@ -198,8 +206,12 @@ export class AssetLoader implements SpriteSheetAssets {
     return ITEM_SPRITES[itemId] ?? null;
   }
 
-  sourceRect(key: SpriteKey): SpriteRect {
-    return SPRITES[key];
+  sourceRect(key: SpriteKey, depth = 1): SpriteRect {
+    const rect = SPRITES[key];
+    if (isTerrainSprite(key)) {
+      return { ...rect, sheet: tileSheetForDepth(depth) };
+    }
+    return rect;
   }
 
   cssStyleForSprite(key: SpriteKey, scale = 2): SpriteCssStyle | null {
@@ -214,4 +226,16 @@ export class AssetLoader implements SpriteSheetAssets {
       height: `${src.h * scale}px`,
     };
   }
+}
+
+function isTerrainSprite(key: SpriteKey): boolean {
+  return key === "floor" || key === "wall" || key === "door" || key === "entrance" || key === "exit";
+}
+
+function tileSheetForDepth(depth: number): SpriteSheetKey {
+  if (depth >= 21) return "tilesHalls";
+  if (depth >= 16) return "tilesCity";
+  if (depth >= 11) return "tilesCaves";
+  if (depth >= 6) return "tilesPrison";
+  return "tiles";
 }
