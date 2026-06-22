@@ -21,6 +21,7 @@ import {
   type DungeonSnapshot,
 } from "@/core/dungeon/DungeonManager";
 import type { Level } from "@/core/dungeon/Level";
+import { Terrain } from "@/core/grid/terrain";
 import { TurnQueue, type TurnQueueSnapshot } from "@/core/turn/TurnQueue";
 import { RNG } from "@/core/rng/Mulberry32";
 import { Hero, type HeroContext } from "@/core/actors/Hero";
