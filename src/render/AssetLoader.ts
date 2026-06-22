@@ -115,8 +115,8 @@ const SPRITES: Record<SpriteKey, SpriteRect> = {
   exit: sheetRect("tiles", xy(1, 1) + 17, 16),
 
   // Walls & Doors (explicit coordinates)
-  wallTop: { sheet: "tiles", x: 0, y: 16, w: 16, h: 16 },
-  wallFront: { sheet: "tiles", x: 0, y: 32, w: 16, h: 16 },
+  wallTop: { sheet: "tiles", x: 32, y: 48, w: 16, h: 16 },
+  wallFront: { sheet: "tiles", x: 0, y: 64, w: 16, h: 16 },
   doorClosedH: { sheet: "tiles", x: 128, y: 48, w: 16, h: 16 },
   doorOpenH: { sheet: "tiles", x: 144, y: 48, w: 16, h: 16 },
   doorClosedV: { sheet: "tiles", x: 128, y: 64, w: 16, h: 16 },
