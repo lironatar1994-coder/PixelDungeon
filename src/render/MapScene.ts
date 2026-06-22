@@ -168,7 +168,17 @@ export function drawMapScene(
             spriteKey = "wallFront";
           }
         } else if (terrain === Terrain.DOOR) {
-          spriteKey = view.openDoors.has(cell) ? "doorOpen" : "doorClosed";
+          const wTerrain = grid.inBounds(x - 1, y) ? grid.get(grid.cell(x - 1, y)) : null;
+          const eTerrain = grid.inBounds(x + 1, y) ? grid.get(grid.cell(x + 1, y)) : null;
+          const isHorizontalWall = 
+            (wTerrain === Terrain.WALL || wTerrain === Terrain.DOOR) &&
+            (eTerrain === Terrain.WALL || eTerrain === Terrain.DOOR);
+          
+          if (isHorizontalWall) {
+            spriteKey = view.openDoors.has(cell) ? "doorOpenH" : "doorClosedH";
+          } else {
+            spriteKey = view.openDoors.has(cell) ? "doorOpenV" : "doorClosedV";
+          }
         } else if (terrain === Terrain.FLOOR) {
           const variant = view.floorVariants.get(cell);
           if (variant === 1) spriteKey = "floor1";

@@ -558,12 +558,33 @@ export class GameWorld {
 
   private checkOpenDoors(): void {
     const grid = this.grid;
+    const occupied = new Set<number>();
+
+    for (const actor of [this.hero, ...this.enemyList]) {
+      occupied.add(actor.pos);
+    }
+    for (const item of this.level.groundItems) {
+      occupied.add(item.cell);
+    }
+
+    for (const doorPos of this.level.openDoors) {
+      if (!occupied.has(doorPos)) {
+        this.level.openDoors.delete(doorPos);
+      }
+    }
+
     for (const actor of [this.hero, ...this.enemyList]) {
       if (grid.get(actor.pos) === Terrain.DOOR && !this.level.openDoors.has(actor.pos)) {
         this.level.openDoors.add(actor.pos);
         if (actor === this.hero) {
           this.pushLog("You open the door.");
         }
+      }
+    }
+
+    for (const item of this.level.groundItems) {
+      if (grid.get(item.cell) === Terrain.DOOR) {
+        this.level.openDoors.add(item.cell);
       }
     }
   }
