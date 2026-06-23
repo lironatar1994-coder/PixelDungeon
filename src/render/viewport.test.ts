@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { Grid } from "@/core/grid/Grid";
 import {
+  clampCameraPan,
   computeCameraViewport,
   MAX_ZOOM_MULTIPLIER,
   MIN_ZOOM_MULTIPLIER,
@@ -68,5 +69,20 @@ describe("camera viewport", () => {
     expect(min.tileSize).toBe(Math.floor(base.tileSize * MIN_ZOOM_MULTIPLIER));
     expect(max.tileSize).toBe(base.tileSize * MAX_ZOOM_MULTIPLIER);
     expect(pixelToCell(zoomed, grid, 400, 300)).toBe(focus);
+  });
+
+  it("applies camera pan to both rendering offsets and tap conversion", () => {
+    const grid = new Grid(60, 60);
+    const focus = grid.cell(30, 30);
+    const pan = clampCameraPan(800, 600, grid, focus, 1, { x: -96, y: 64 });
+    const vp = computeCameraViewport(800, 600, grid, focus, 1, pan);
+
+    const target = grid.cell(34, 27);
+    const px = vp.offsetX + 34 * vp.tileSize + vp.tileSize / 2;
+    const py = vp.offsetY + 27 * vp.tileSize + vp.tileSize / 2;
+
+    expect(pan).toEqual({ x: -96, y: 64 });
+    expect(pixelToCell(vp, grid, px, py)).toBe(target);
+    expect(pixelToCell(vp, grid, 400, 300)).not.toBe(focus);
   });
 });

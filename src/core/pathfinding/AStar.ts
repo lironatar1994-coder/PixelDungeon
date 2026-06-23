@@ -18,6 +18,8 @@ export interface AStarOptions {
   neighbours?: (cell: number) => number[];
   /** Cost of moving from one cell to an adjacent one. Default: 1. */
   cost?: (from: number, to: number) => number;
+  /** Estimated remaining cost. Default: Manhattan distance for 4-way grids. */
+  heuristic?: (from: number, to: number) => number;
   /** Whether a cell may be entered. Default: always. (Goal is always allowed.) */
   passable?: (cell: number) => boolean;
 }
@@ -86,8 +88,8 @@ export function findPath(
   const neighboursOf = opts.neighbours ?? ((c) => grid.neighbours4(c));
   const costOf = opts.cost ?? (() => 1);
   const passable = opts.passable ?? (() => true);
-  const heuristic = (a: number, b: number): number =>
-    Math.abs(grid.xOf(a) - grid.xOf(b)) + Math.abs(grid.yOf(a) - grid.yOf(b));
+  const heuristic = opts.heuristic ?? ((a: number, b: number): number =>
+    Math.abs(grid.xOf(a) - grid.xOf(b)) + Math.abs(grid.yOf(a) - grid.yOf(b)));
 
   const gScore = new Map<number, number>([[start, 0]]);
   const cameFrom = new Map<number, number>();

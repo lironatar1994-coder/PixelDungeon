@@ -834,3 +834,19 @@ Hero/Mage run frames `2..7` at 20 fps from `HeroSprite.java`, Rat frames
 `6..10` at 10 fps from `RatSprite.java`, and Zombie/Undead frames `4..9` at
 15 fps from `UndeadSprite.java`; after the tween expires actors return to the
 existing idle animation layer.
+
+### Phase 17.4 - Attack Tag & SPD Floating Damage COMPLETE
+Added the first SPD-style quick attack tag without moving combat rules into the
+DOM. **`main.ts`** ([src/main.ts](src/main.ts)) computes a read-only adjacent
+visible target and exposes a `quickAttack()` intent to **`GameOverlay`**
+([src/ui/GameOverlay.ts](src/ui/GameOverlay.ts)); the overlay shows a red
+pixel-art attack tag with the target's sprite only when that target can be
+bump-attacked right now.
+
+Damage feedback now follows **`FloatingText.java`** more closely in
+**`MapScene`** ([src/render/MapScene.ts](src/render/MapScene.ts)): popups live
+for one second, rise about one tile, fade in the second half, stack above the
+same defender, and draw the physical-damage icon from SPD's `text_icons.png`
+via **`AssetLoader`** ([src/render/AssetLoader.ts](src/render/AssetLoader.ts)).
+All of this remains render/UI-only and listens to the existing
+`combat:strike` EventBus event.

@@ -66,10 +66,10 @@ describe("planTap (touch-to-attack targeting)", () => {
     expect(plan).toEqual({ kind: "approach", enemy });
   });
 
-  it("treats a diagonally-adjacent enemy as out of melee range (approach)", () => {
-    const enemy: MockEnemy = { pos: grid.cell(6, 6), alive: true }; // Manhattan 2
+  it("attacks a visible enemy that is diagonally adjacent", () => {
+    const enemy: MockEnemy = { pos: grid.cell(6, 6), alive: true };
     const plan = planTap(makeView(grid, hero, [enemy], allVisible), enemy.pos);
-    expect(plan.kind).toBe("approach");
+    expect(plan).toEqual({ kind: "attack", enemy });
   });
 
   it("ignores an enemy hidden in fog and walks to the tile instead", () => {

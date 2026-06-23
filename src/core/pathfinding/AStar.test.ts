@@ -49,4 +49,22 @@ describe("AStar.findPath", () => {
     const b = findPath(g, g.cell(0, 0), g.cell(11, 11));
     expect(a).toEqual(b);
   });
+
+  it("supports 8-way paths when neighbours and heuristic are supplied", () => {
+    const g = new Grid(10, 10, Terrain.FLOOR);
+    const start = g.cell(1, 1);
+    const goal = g.cell(4, 4);
+    const path = findPath(g, start, goal, {
+      neighbours: (cell) => g.neighbours8(cell),
+      heuristic: (from, to) =>
+        Math.max(Math.abs(g.xOf(from) - g.xOf(to)), Math.abs(g.yOf(from) - g.yOf(to))),
+    });
+
+    expect(path).toEqual([
+      g.cell(1, 1),
+      g.cell(2, 2),
+      g.cell(3, 3),
+      g.cell(4, 4),
+    ]);
+  });
 });

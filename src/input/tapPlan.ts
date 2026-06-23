@@ -27,9 +27,12 @@ export interface TapView<E extends { pos: number }> {
   isVisible: (cell: number) => boolean;
 }
 
-/** Manhattan distance: melee range is the 4 orthogonal neighbours (distance 1). */
-function manhattan(grid: Grid, a: number, b: number): number {
-  return Math.abs(grid.xOf(a) - grid.xOf(b)) + Math.abs(grid.yOf(a) - grid.yOf(b));
+/** Chebyshev distance: melee range includes orthogonal and diagonal neighbours. */
+function chebyshev(grid: Grid, a: number, b: number): number {
+  return Math.max(
+    Math.abs(grid.xOf(a) - grid.xOf(b)),
+    Math.abs(grid.yOf(a) - grid.yOf(b)),
+  );
 }
 
 export function planTap<E extends { pos: number }>(
@@ -44,7 +47,7 @@ export function planTap<E extends { pos: number }>(
   );
   if (enemy) {
     // 2 & 3. In melee range -> attack now; otherwise approach via pathfinding.
-    return manhattan(view.grid, view.heroPos, cell) === 1
+    return chebyshev(view.grid, view.heroPos, cell) === 1
       ? { kind: "attack", enemy }
       : { kind: "approach", enemy };
   }

@@ -13,6 +13,7 @@ export type SpriteSheetKey =
   | "undead"
   | "items"
   | "itemIcons"
+  | "textIcons"
   | "toolbar"
   | "interfaceIcons";
 
@@ -48,7 +49,8 @@ export type SpriteKey =
   | "uiSearch"
   | "uiQuickslot"
   | "uiHeroStats"
-  | "uiControls";
+  | "uiControls"
+  | "textPhysDamage";
 
 export interface SpriteRect {
   sheet: SpriteSheetKey;
@@ -74,6 +76,7 @@ export interface SpriteSheetAssets {
   spriteForTerrain(terrain: Terrain, depth?: number): SpriteKey;
   spriteForEnemy(enemy: { name: string; state: EnemyState }): SpriteKey;
   spriteForItem(itemId: string): SpriteKey | null;
+  spriteForItemType(type: string): SpriteKey;
   sourceRect(key: SpriteKey, depth?: number): SpriteRect;
   cssStyleForSprite(key: SpriteKey, scale?: number): SpriteCssStyle | null;
 }
@@ -92,6 +95,7 @@ const SHEET_URLS: Record<SpriteSheetKey, string> = {
   undead: `${BASE}assets/undead.png`,
   items: `${BASE}assets/items.png`,
   itemIcons: `${BASE}assets/item_icons.png`,
+  textIcons: `${BASE}assets/text_icons.png`,
   toolbar: `${BASE}assets/toolbar.png`,
   interfaceIcons: `${BASE}assets/icons.png`,
 };
@@ -160,6 +164,9 @@ const SPRITES: Record<SpriteKey, SpriteRect> = {
   // Icons.java: STATS=(128,16,16,13), KEYBOARD=(112,16,15,12).
   uiHeroStats: { sheet: "interfaceIcons", x: 128, y: 16, w: 16, h: 13 },
   uiControls: { sheet: "interfaceIcons", x: 112, y: 16, w: 15, h: 12 },
+
+  // FloatingText.java: TEXT_ICONS film is 7x8, PHYS_DMG is index 0.
+  textPhysDamage: { sheet: "textIcons", x: 0, y: 0, w: 7, h: 8 },
 };
 
 const ITEM_SPRITES: Record<string, SpriteKey> = {
@@ -227,6 +234,23 @@ export class AssetLoader implements SpriteSheetAssets {
 
   spriteForItem(itemId: string): SpriteKey | null {
     return ITEM_SPRITES[itemId] ?? null;
+  }
+
+  /** A representative sprite for an item's category, so an item with an
+   *  unmapped id still draws real art instead of a placeholder. */
+  spriteForItemType(type: string): SpriteKey {
+    switch (type) {
+      case "weapon":
+        return "shortSword";
+      case "armor":
+        return "leatherArmor";
+      case "potion":
+        return "healingPotion";
+      case "food":
+        return "ration";
+      default:
+        return "ration";
+    }
   }
 
   sourceRect(key: SpriteKey, depth = 1): SpriteRect {

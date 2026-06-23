@@ -5,7 +5,7 @@ import type { FrameInfo } from "./Renderer";
 import type { Grid } from "@/core/grid/Grid";
 import { Terrain } from "@/core/grid/terrain";
 import type { EnemyState } from "@/core/actors/Enemy";
-import { computeCameraViewport } from "./viewport";
+import { computeCameraViewport, type CameraPan } from "./viewport";
 import type { SpriteKey, SpriteSheetAssets } from "./AssetLoader";
 
 const VISIBLE = {
@@ -38,8 +38,11 @@ const COLORS = {
 const IDLE_START_DELAY_SECONDS = 1.4;
 const STRIKE_DURATION_SECONDS = 0.15;
 const MOVE_TWEEN_DURATION_MS = 150;
-const DAMAGE_POPUP_DURATION_SECONDS = 0.7;
+const DAMAGE_POPUP_DURATION_SECONDS = 1;
 const HERO_DRAW_SCALE = 0.78;
+// SPD CharSprite.worldToCamera raises actors by 6px on a 16px tile so their
+// feet stand on the raised floor plane, not on the tile's lower wall edge.
+const ACTOR_PERSPECTIVE_RAISE = 6 / 16;
 const WALL_CAST_SHADOW_ALPHA = 0.24;
 const TILE_SHEET_COLUMNS = 16;
 const RAISED_DOORS = sheetIndex(1, 8);
@@ -135,6 +138,7 @@ export interface MapView {
   groundItems: ReadonlyArray<{
     cell: number;
     itemId: string;
+    type?: string;
   }>;
   openDoors: ReadonlySet<number>;
   floorVariants: ReadonlyMap<number, number>;
@@ -163,6 +167,7 @@ export function drawMapScene(
   view: MapView,
   assets?: SpriteSheetAssets,
   zoomMultiplier = 1,
+  cameraPan: CameraPan = { x: 0, y: 0 },
 ): void {
   const { grid } = view;
   const vp = computeCameraViewport(
@@ -171,6 +176,7 @@ export function drawMapScene(
     grid,
     view.heroPos,
     zoomMultiplier,
+    cameraPan,
   );
   const ts = vp.tileSize;
   const idleElapsed = idleElapsedAfterStillness(frame.elapsed, view);
@@ -179,8 +185,6 @@ export function drawMapScene(
   const minY = Math.max(0, Math.floor(-vp.offsetY / ts) - 1);
   const maxX = Math.min(grid.width - 1, Math.ceil((frame.width - vp.offsetX) / ts) + 1);
   const maxY = Math.min(grid.height - 1, Math.ceil((frame.height - vp.offsetY) / ts) + 1);
-  const actorCells = new Set<number>([view.heroPos, ...view.enemies.map((enemy) => enemy.pos)]);
-
   for (let y = minY; y <= maxY; y++) {
     for (let x = minX; x <= maxX; x++) {
       const cell = grid.cell(x, y);
@@ -228,7 +232,7 @@ export function drawMapScene(
           spriteKey = floorSpriteForCell(view, cell);
         }
 
-        if (!isWallStitchable(grid, x, y) && !actorCells.has(cell)) {
+        if (!isWallStitchable(grid, x, y)) {
           const southTerrain = terrainAt(grid, x, y + 1);
           if (southTerrain === Terrain.WALL) {
             overhangIndex = stitchWallOverhangTile(grid, x, y, view.openDoors.has(cell));
@@ -301,13 +305,14 @@ export function drawMapScene(
 
   for (const enemy of view.enemies) {
     if (!view.visible.has(enemy.pos)) continue;
+    const enemySprite = assets?.spriteForEnemy(enemy) ?? "rat";
     drawCell(
       ctx,
       assets,
       vp,
       grid,
       enemy.pos,
-      assets?.spriteForEnemy(enemy) ?? "rat",
+      enemySprite,
       enemy.state === "hunt" ? COLORS.enemyHunt : COLORS.enemyWander,
       COLORS.enemyEdge,
       {
@@ -317,7 +322,19 @@ export function drawMapScene(
         frameElapsed: frame.elapsed,
       },
     );
-    drawEnemyHealthBar(ctx, vp, grid, enemy.pos, enemy.hp, enemy.maxHealth, enemy.id, frame.elapsed);
+    drawEnemyHealthBar(
+      ctx,
+      assets,
+      vp,
+      grid,
+      enemy.pos,
+      enemy.hp,
+      enemy.maxHealth,
+      enemy.id,
+      enemySprite,
+      view.depth,
+      frame.elapsed,
+    );
   }
 
   drawCell(
@@ -339,7 +356,7 @@ export function drawMapScene(
     HERO_DRAW_SCALE,
   );
 
-  drawDamagePopups(ctx, vp, grid, frame.elapsed);
+  drawDamagePopups(ctx, vp, grid, frame.elapsed, assets);
 
   if (view.selectedCell !== null) {
     const sx = grid.xOf(view.selectedCell);
@@ -460,31 +477,40 @@ function drawGroundItem(
   assets: SpriteSheetAssets | undefined,
   vp: VP,
   grid: Grid,
-  item: { cell: number; itemId: string },
+  item: { cell: number; itemId: string; type?: string },
 ): void {
   const ts = vp.tileSize;
   const size = Math.max(8, ts * 0.62);
   const x = vp.offsetX + grid.xOf(item.cell) * ts + (ts - size) / 2;
   const y = vp.offsetY + grid.yOf(item.cell) * ts + ts * 0.28;
-  const sprite = assets?.spriteForItem(item.itemId) ?? null;
+
+  // Prefer the exact item sprite; fall back to a representative sprite for the
+  // item's category so an unmapped id still draws real art (never a placeholder).
+  const sprite =
+    assets?.spriteForItem(item.itemId) ??
+    (item.type ? assets?.spriteForItemType(item.type) : null) ??
+    null;
   if (assets && sprite && drawSprite(ctx, assets, sprite, x, y, size, 1)) {
     return;
   }
 
+  // Last resort (no assets at all): a small, tasteful pickup glint — not a
+  // jarring placeholder.
   const cx = vp.offsetX + grid.xOf(item.cell) * ts + ts / 2;
-  const cy = vp.offsetY + grid.yOf(item.cell) * ts + ts * 0.62;
+  const cy = vp.offsetY + grid.yOf(item.cell) * ts + ts * 0.6;
+  const r = Math.max(2, ts * 0.14);
   ctx.save();
-  ctx.fillStyle = "#f2d66b";
-  ctx.strokeStyle = "rgba(0, 0, 0, 0.85)";
-  ctx.lineWidth = Math.max(1, ts * 0.06);
+  const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 2.4);
+  glow.addColorStop(0, "rgba(245, 235, 200, 0.85)");
+  glow.addColorStop(1, "rgba(245, 235, 200, 0)");
+  ctx.fillStyle = glow;
   ctx.beginPath();
-  ctx.moveTo(cx, cy - size * 0.28);
-  ctx.lineTo(cx + size * 0.28, cy);
-  ctx.lineTo(cx, cy + size * 0.28);
-  ctx.lineTo(cx - size * 0.28, cy);
-  ctx.closePath();
+  ctx.arc(cx, cy, r * 2.4, 0, Math.PI * 2);
   ctx.fill();
-  ctx.stroke();
+  ctx.fillStyle = "#f6edcb";
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fill();
   ctx.restore();
 }
 
@@ -510,13 +536,14 @@ function drawCell(
   const pixelY = vp.offsetY + grid.yOf(cell) * ts + visual.pixelOffsetY;
   const size = actorSpriteSize(assets, sprite, ts, visualScale, depth);
   const x = pixelX + (ts - size.width) / 2;
-  const y = pixelY + ts - size.height;
+  const perspectiveRaise = isActor ? ts * ACTOR_PERSPECTIVE_RAISE : 0;
+  const y = pixelY + ts - perspectiveRaise - size.height;
   const drawMotion = motion && visual.movingElapsed !== null
     ? { ...motion, movingElapsed: visual.movingElapsed }
     : motion;
 
   if (isActor) {
-    drawActorShadow(ctx, pixelX, pixelY, ts, visualScale);
+    drawActorShadow(ctx, pixelX, pixelY, ts, visualScale, perspectiveRaise);
   }
 
   if (assets && drawSprite(ctx, assets, sprite, x, y, size.width, 1, drawMotion, depth, size.height)) {
@@ -555,13 +582,14 @@ function drawActorShadow(
   pixelY: number,
   tileSize: number,
   visualScale: number,
+  perspectiveRaise: number,
 ): void {
   ctx.save();
   ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
   ctx.beginPath();
   ctx.ellipse(
     pixelX + tileSize / 2,
-    pixelY + tileSize - Math.max(1, Math.round(tileSize * 0.04)),
+    pixelY + tileSize - perspectiveRaise - Math.max(1, Math.round(tileSize * 0.04)),
     Math.max(3, tileSize * 0.22 * visualScale),
     Math.max(2, tileSize * 0.08 * visualScale),
     0,
@@ -574,23 +602,34 @@ function drawActorShadow(
 
 function drawEnemyHealthBar(
   ctx: CanvasRenderingContext2D,
+  assets: SpriteSheetAssets | undefined,
   vp: VP,
   grid: Grid,
   cell: number,
   hp: number,
   maxHealth: number,
   actorId: string,
+  sprite: SpriteKey,
+  depth: number,
   elapsed: number,
 ): void {
   if (maxHealth <= 0) return;
   const ts = vp.tileSize;
   const offset = visualOffsetForActor(actorId, grid, ts, elapsed);
+  const size = actorSpriteSize(assets, sprite, ts, 1, depth);
   const ratio = Math.max(0, Math.min(1, hp / maxHealth));
   const barWidth = Math.max(10, Math.round(ts * 0.58));
   const barHeight = Math.max(3, Math.round(ts * 0.08));
   const border = Math.max(1, Math.round(ts * 0.025));
   const x = vp.offsetX + grid.xOf(cell) * ts + offset.pixelOffsetX + (ts - barWidth) / 2;
-  const y = vp.offsetY + grid.yOf(cell) * ts + offset.pixelOffsetY + Math.round(ts * 0.05);
+  const actorTop =
+    vp.offsetY +
+    grid.yOf(cell) * ts +
+    offset.pixelOffsetY +
+    ts -
+    ts * ACTOR_PERSPECTIVE_RAISE -
+    size.height;
+  const y = actorTop - barHeight - border * 2 - Math.max(1, Math.round(ts * 0.04));
 
   ctx.save();
   ctx.imageSmoothingEnabled = false;
@@ -817,28 +856,54 @@ function drawDamagePopups(
   vp: VP,
   grid: Grid,
   elapsed: number,
+  assets?: SpriteSheetAssets,
 ): void {
   const ts = vp.tileSize;
+  const stackByCell = new Map<number, number>();
   for (const popup of activeDamagePopups) {
     if (popup.startedAt === null) continue;
     const progress = Math.max(
       0,
       Math.min(1, (elapsed - popup.startedAt) / DAMAGE_POPUP_DURATION_SECONDS),
     );
+    const stackIndex = stackByCell.get(popup.cell) ?? 0;
+    stackByCell.set(popup.cell, stackIndex + 1);
     const x = vp.offsetX + grid.xOf(popup.cell) * ts + ts / 2;
-    const y = vp.offsetY + grid.yOf(popup.cell) * ts + ts * 0.18 - progress * ts * 0.65;
+    const y = vp.offsetY + grid.yOf(popup.cell) * ts + ts * 0.18 - progress * ts - stackIndex * ts * 0.38;
     const text = popup.hit ? String(popup.damage) : "MISS";
+    const alpha = progress > 0.5 ? 1 - (progress - 0.5) * 2 : 1;
+    const fontSize = Math.max(12, Math.floor(ts * 0.42));
+    const iconSize = Math.max(7, Math.floor(ts * 0.34));
 
     ctx.save();
-    ctx.globalAlpha = 1 - progress;
-    ctx.font = `${Math.max(12, Math.floor(ts * 0.42))}px "SPD Pixel", monospace`;
-    ctx.textAlign = "center";
+    ctx.globalAlpha = alpha;
+    ctx.font = `${fontSize}px "SPD Pixel", monospace`;
+    ctx.textAlign = popup.hit && assets?.canDraw("textPhysDamage") ? "left" : "center";
     ctx.textBaseline = "middle";
     ctx.lineWidth = Math.max(2, ts * 0.05);
     ctx.strokeStyle = "rgba(0, 0, 0, 0.9)";
-    ctx.fillStyle = popup.hit ? "#ffe36a" : "#e7eef8";
-    ctx.strokeText(text, x, y);
-    ctx.fillText(text, x, y);
+    ctx.fillStyle = popup.hit ? "#ff3324" : "#ffff44";
+
+    if (popup.hit && assets?.canDraw("textPhysDamage")) {
+      const textWidth = ctx.measureText(text).width;
+      const totalWidth = iconSize + 2 + textWidth;
+      const left = x - totalWidth / 2;
+      ctx.restore();
+      drawSprite(ctx, assets, "textPhysDamage", left, y - iconSize / 2, iconSize, alpha);
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.font = `${fontSize}px "SPD Pixel", monospace`;
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      ctx.lineWidth = Math.max(2, ts * 0.05);
+      ctx.strokeStyle = "rgba(0, 0, 0, 0.9)";
+      ctx.fillStyle = "#ff3324";
+      ctx.strokeText(text, left + iconSize + 2, y);
+      ctx.fillText(text, left + iconSize + 2, y);
+    } else {
+      ctx.strokeText(text, x, y);
+      ctx.fillText(text, x, y);
+    }
     ctx.restore();
   }
 }

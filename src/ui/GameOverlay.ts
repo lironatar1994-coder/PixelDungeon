@@ -6,6 +6,7 @@ export interface OverlayState {
   seed: string;
   depth: number;
   enemiesInSight: Array<{ name: string; hp: number; maxHealth: number; state: string }>;
+  attackTarget: { name: string; sprite: SpriteKey } | null;
   hero: {
     hp: number;
     maxHealth: number;
@@ -37,6 +38,7 @@ export interface OverlayActions {
   consume(itemId: string): boolean;
   drop(itemId: string): boolean;
   wait(): boolean;
+  quickAttack(): boolean;
   quickslot(): void;
   look(): void;
   restart(): void;
@@ -46,6 +48,7 @@ export class GameOverlay {
   private readonly root: HTMLDivElement;
   private readonly hud: HTMLDivElement;
   private readonly utilityBar: HTMLDivElement;
+  private readonly attackIndicator: HTMLButtonElement;
   private readonly actionBar: HTMLDivElement;
   private readonly logBox: HTMLDivElement;
   private readonly inventoryPanel: HTMLDivElement;
@@ -63,6 +66,8 @@ export class GameOverlay {
   private quickslotOpen = false;
   private actionBarRendered = false;
   private utilityBarRendered = false;
+  private quickslotGroup!: HTMLDivElement;
+  private quickslotSig = "";
   private logLines: string[] = [];
 
   constructor(
@@ -79,6 +84,7 @@ export class GameOverlay {
     this.root.innerHTML = `
       <section class="ui-hud ui-panel" data-ui-panel></section>
       <nav class="utility-bar" data-ui-panel aria-label="Hero and help"></nav>
+      <button class="attack-indicator" data-ui-panel type="button" aria-label="Attack" title="Attack" hidden></button>
       <section class="ui-log" data-ui-panel aria-live="polite"></section>
       <nav class="action-bar" data-ui-panel aria-label="Game actions"></nav>
       <section class="inventory-modal ui-panel" data-ui-panel hidden></section>
@@ -91,6 +97,7 @@ export class GameOverlay {
 
     this.hud = this.mustQuery<HTMLDivElement>(".ui-hud");
     this.utilityBar = this.mustQuery<HTMLDivElement>(".utility-bar");
+    this.attackIndicator = this.mustQuery<HTMLButtonElement>(".attack-indicator");
     this.actionBar = this.mustQuery<HTMLDivElement>(".action-bar");
     this.logBox = this.mustQuery<HTMLDivElement>(".ui-log");
     this.inventoryPanel = this.mustQuery<HTMLDivElement>(".inventory-modal");
@@ -103,6 +110,12 @@ export class GameOverlay {
       panel.addEventListener("pointerdown", (e) => e.stopPropagation());
       panel.addEventListener("click", (e) => e.stopPropagation());
     }
+    this.attackIndicator.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.actions.quickAttack();
+      this.renderAttackIndicator(this.getState());
+    });
 
     this.unsubscribers.push(
       bus.on("loop:frame", () => this.render()),
@@ -131,8 +144,10 @@ export class GameOverlay {
   private render(): void {
     const state = this.getState();
     this.renderHud(state);
+    this.renderAttackIndicator(state);
     if (!this.utilityBarRendered) this.renderUtilityBar();
     if (!this.actionBarRendered) this.renderActionBar();
+    this.renderQuickslots(state);
     this.renderLog();
     if (this.inventoryOpen) this.renderInventory(state);
     if (this.heroOpen) this.renderHero(state);
@@ -191,9 +206,23 @@ export class GameOverlay {
 
     const vitals = document.createElement("div");
     vitals.className = "hud-vitals";
+
+    const topRow = document.createElement("div");
+    topRow.className = "hud-top-row";
     const depth = document.createElement("div");
     depth.className = "depth-pill";
     depth.textContent = `Depth ${state.depth}`;
+    topRow.append(depth);
+
+    const inSight = state.enemiesInSight.length;
+    if (inSight > 0) {
+      const hunting = state.enemiesInSight.filter((e) => e.state === "hunt").length;
+      const threat = document.createElement("div");
+      threat.className = hunting > 0 ? "threat-chip threat-chip-active" : "threat-chip";
+      threat.textContent = `${inSight} foe${inSight > 1 ? "s" : ""}`;
+      threat.title = `${inSight} in sight${hunting > 0 ? `, ${hunting} hunting you` : ""}`;
+      topRow.append(threat);
+    }
 
     const hp = document.createElement("div");
     hp.className = "hp-track";
@@ -211,7 +240,7 @@ export class GameOverlay {
       <span class="exp-text">${state.hero.experience}/${state.hero.maxExperience}</span>
     `;
 
-    vitals.append(depth, hp, exp);
+    vitals.append(topRow, hp, exp);
     this.hud.append(portrait, level, vitals);
   }
 
@@ -220,16 +249,105 @@ export class GameOverlay {
     left.className = "action-group action-group-left";
     left.append(this.actionButton("Wait", "uiWait", () => this.actions.wait()));
 
+    const center = document.createElement("div");
+    center.className = "action-group action-group-center quickslot-bar";
+    this.quickslotGroup = center;
+
     const right = document.createElement("div");
     right.className = "action-group action-group-right";
     right.append(
-      this.actionButton("Quickslot", "uiQuickslot", () => this.toggleQuickslot()),
       this.actionButton("Look", "uiSearch", () => this.actions.look()),
       this.actionButton("Inventory", "uiInventory", () => this.toggleInventory()),
     );
 
-    this.actionBar.replaceChildren(left, right);
+    this.actionBar.replaceChildren(left, center, right);
     this.actionBarRendered = true;
+    this.quickslotSig = "";
+    this.renderQuickslots(this.getState());
+  }
+
+  /**
+   * Quickslots: tappable shortcuts for the consumables in the bag (potions,
+   * food), grouped by id with a count. Re-rendered only when the consumable
+   * set changes so the bar doesn't thrash every frame. Tapping issues the
+   * `consume` intent — no state mutation here (Pillar 1).
+   */
+  private renderQuickslots(state: OverlayState): void {
+    if (!this.quickslotGroup) return;
+
+    const grouped = new Map<string, { item: ItemDef; count: number }>();
+    for (const item of state.inventory.items) {
+      if (item.type !== "potion" && item.type !== "food") continue;
+      const entry = grouped.get(item.id);
+      if (entry) entry.count++;
+      else grouped.set(item.id, { item, count: 1 });
+    }
+    const slots = [...grouped.values()].slice(0, 4);
+    const sig = slots.map((s) => `${s.item.id}x${s.count}`).join(",");
+    if (sig === this.quickslotSig) return;
+    this.quickslotSig = sig;
+
+    this.quickslotGroup.replaceChildren();
+    const slotCount = Math.max(2, slots.length); // always show at least two frames
+    for (let i = 0; i < slotCount; i++) {
+      const slot = slots[i];
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = slot ? "quickslot-slot" : "quickslot-slot quickslot-empty";
+      if (!slot) {
+        button.disabled = true;
+        button.setAttribute("aria-hidden", "true");
+        this.quickslotGroup.append(button);
+        continue;
+      }
+
+      button.title = slot.item.name;
+      button.setAttribute("aria-label", `Use ${slot.item.name}`);
+      const sprite = this.assets?.spriteForItem(slot.item.id) ?? null;
+      const iconStyle = sprite
+        ? this.assets?.cssStyleForSprite(
+            sprite,
+            sprite === "healingPotion" || sprite === "strengthPotion" ? 3 : 2,
+          )
+        : null;
+      if (iconStyle) {
+        const node = document.createElement("span");
+        node.className = "quickslot-sprite";
+        Object.assign(node.style, iconStyle);
+        button.append(node);
+      } else {
+        button.textContent = slot.item.name.slice(0, 1).toUpperCase();
+      }
+      if (slot.count > 1) {
+        const count = document.createElement("span");
+        count.className = "quickslot-count";
+        count.textContent = String(slot.count);
+        button.append(count);
+      }
+
+      const id = slot.item.id;
+      button.addEventListener("click", () => {
+        if (this.actions.consume(id)) this.render();
+      });
+      this.quickslotGroup.append(button);
+    }
+  }
+
+  private renderAttackIndicator(state: OverlayState): void {
+    const target = state.attackTarget;
+    this.attackIndicator.hidden = target === null || !state.hero.alive;
+    this.attackIndicator.replaceChildren();
+    if (!target || !state.hero.alive) return;
+
+    const sprite = document.createElement("span");
+    sprite.className = "attack-indicator-sprite";
+    const style = this.assets?.cssStyleForSprite(target.sprite, 2);
+    if (style) {
+      Object.assign(sprite.style, style);
+    } else {
+      sprite.textContent = "!";
+    }
+    this.attackIndicator.append(sprite);
   }
 
   private renderUtilityBar(): void {
@@ -490,17 +608,6 @@ export class GameOverlay {
     this.closeModals();
     this.helpOpen = true;
     this.renderHelp();
-  }
-
-  private toggleQuickslot(): void {
-    if (this.quickslotOpen) {
-      this.closeModals();
-      return;
-    }
-    this.actions.quickslot();
-    this.closeModals();
-    this.quickslotOpen = true;
-    this.renderQuickslot();
   }
 
   private actionButton(

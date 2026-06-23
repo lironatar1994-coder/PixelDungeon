@@ -25,10 +25,12 @@ import {
 } from "@/render/MapScene";
 import { AssetLoader, type SpriteKey } from "@/render/AssetLoader";
 import {
+  clampCameraPan,
   clampZoomMultiplier,
   computeCameraViewport,
   pixelToCell,
   MAP_TOP_INSET,
+  type CameraPan,
 } from "@/render/viewport";
 import {
   GameWorld,
@@ -53,6 +55,34 @@ type TargetingMode = "ranged" | "look";
 const AUTO_WALK_STEP_SECONDS = 0.08;
 const WHEEL_ZOOM_STEP = 0.0015;
 const PINCH_ZOOM_SENSITIVITY = 1;
+const CARDINAL_AND_DIAGONAL_KEYS: Record<string, [number, number]> = {
+  ArrowUp: [0, -1],
+  w: [0, -1],
+  ArrowDown: [0, 1],
+  s: [0, 1],
+  ArrowLeft: [-1, 0],
+  a: [-1, 0],
+  ArrowRight: [1, 0],
+  d: [1, 0],
+  Home: [-1, -1],
+  y: [-1, -1],
+  PageUp: [1, -1],
+  u: [1, -1],
+  End: [-1, 1],
+  b: [-1, 1],
+  PageDown: [1, 1],
+  n: [1, 1],
+};
+const NUMPAD_MOVES: Record<string, [number, number]> = {
+  Numpad8: [0, -1],
+  Numpad2: [0, 1],
+  Numpad4: [-1, 0],
+  Numpad6: [1, 0],
+  Numpad7: [-1, -1],
+  Numpad9: [1, -1],
+  Numpad1: [-1, 1],
+  Numpad3: [1, 1],
+};
 
 function createRunSeed(): string {
   const random = new Uint32Array(2);
@@ -114,6 +144,7 @@ async function boot(): Promise<void> {
   let autoWalkKnownHostileIds = new Set<number>();
   let autoWalkElapsed = 0;
   let zoomMultiplier = 1;
+  let cameraPan: CameraPan = { x: 0, y: 0 };
   let pinchDistance: number | null = null;
   let gameOverReported = false;
   let menu: MainMenu | null = null;
@@ -140,7 +171,11 @@ async function boot(): Promise<void> {
         hp: e.hp,
         maxHealth: e.maxHealth,
       })),
-      groundItems: current.level.groundItems,
+      groundItems: current.level.groundItems.map((ground) => ({
+        cell: ground.cell,
+        itemId: ground.itemId,
+        type: content.getItem(ground.itemId)?.type,
+      })),
       openDoors: current.level.openDoors,
       floorVariants: current.level.floorVariants,
       visible: current.fov.visible,
@@ -176,6 +211,7 @@ async function boot(): Promise<void> {
           maxHealth: enemy.maxHealth,
           state: enemy.state,
         })),
+      attackTarget: attackTargetForOverlay(current),
       hero: {
         hp: current.heroStats.hp,
         maxHealth: current.heroStats.maxHealth,
@@ -217,6 +253,7 @@ async function boot(): Promise<void> {
     seed = nextSeed;
     selectedCell = null;
     targetingMode = null;
+    cameraPan = { x: 0, y: 0 };
     gameOverReported = false;
     clearCombatAnimations();
     cancelAutoWalk();
@@ -247,6 +284,14 @@ async function boot(): Promise<void> {
         },
         wait: () => {
           const ok = requireWorld(world).waitTurn();
+          if (ok) playSfx("ui_click");
+          return ok;
+        },
+        quickAttack: () => {
+          if (!world) return false;
+          const target = adjacentAttackTarget(world);
+          if (!target) return false;
+          const ok = attackAdjacent(target);
           if (ok) playSfx("ui_click");
           return ok;
         },
@@ -380,12 +425,29 @@ async function boot(): Promise<void> {
   }
 
   /** Bump-attack an adjacent enemy by moving onto its tile (one intent). */
-  function attackAdjacent(enemy: Enemy): void {
-    if (!world) return;
+  function attackAdjacent(enemy: Enemy): boolean {
+    if (!world) return false;
     const current = world;
     const dx = Math.sign(current.grid.xOf(enemy.pos) - current.grid.xOf(current.heroPos));
     const dy = Math.sign(current.grid.yOf(enemy.pos) - current.grid.yOf(current.heroPos));
-    current.tryMoveHero(dx, dy); // enemy on the target cell -> bump combat
+    return current.tryMoveHero(dx, dy); // enemy on the target cell -> bump combat
+  }
+
+  function adjacentAttackTarget(current: GameWorld): Enemy | null {
+    return current.enemies.find((enemy) =>
+      enemy.stats.alive &&
+      current.fov.visible.has(enemy.pos) &&
+      chebyshevDistance(current, current.heroPos, enemy.pos) === 1,
+    ) ?? null;
+  }
+
+  function attackTargetForOverlay(current: GameWorld): { name: string; sprite: SpriteKey } | null {
+    const target = adjacentAttackTarget(current);
+    if (!target) return null;
+    return {
+      name: target.name,
+      sprite: assets.spriteForEnemy(target),
+    };
   }
 
   function startAutoWalk(target: number): void {
@@ -393,10 +455,7 @@ async function boot(): Promise<void> {
     const current = world;
     if (target === current.heroPos || !current.grid.isWalkable(target)) return;
 
-    const path = findPath(current.grid, current.heroPos, target, {
-      passable: (cell) =>
-        current.grid.isWalkable(cell) && (cell === target || !current.isOccupied(cell)),
-    });
+    const path = findHeroPath(current, target);
     if (!path || path.length < 2) return; // no route, or already standing there
 
     autoPath = path.slice(1); // drop the hero's own cell; keep the steps ahead
@@ -405,15 +464,79 @@ async function boot(): Promise<void> {
   }
 
   function handleTravelTap(target: number): void {
-    startAutoWalk(target);
+    if (!world) return;
+    const resolvedTarget = resolveTravelTarget(world, target);
+    if (resolvedTarget !== null) startAutoWalk(resolvedTarget);
+  }
+
+  function resolveTravelTarget(current: GameWorld, target: number): number | null {
+    if (target === current.heroPos) return target;
+    if (isAvailableTravelCell(current, target)) return target;
+    return nearestReachableTravelCell(current, target);
+  }
+
+  function nearestReachableTravelCell(current: GameWorld, target: number): number | null {
+    const grid = current.grid;
+    const targetX = grid.xOf(target);
+    const targetY = grid.yOf(target);
+    let best: { cell: number; distance: number; turns: number } | null = null;
+
+    for (let cell = 0; cell < grid.length; cell++) {
+      if (!isAvailableTravelCell(current, cell) || cell === current.heroPos) continue;
+      const path = findHeroPath(current, cell);
+      if (!path) continue;
+
+      const dx = grid.xOf(cell) - targetX;
+      const dy = grid.yOf(cell) - targetY;
+      const distance = Math.hypot(dx, dy);
+      const turns = path.length - 1;
+      if (
+        best === null ||
+        distance < best.distance ||
+        (distance === best.distance && turns < best.turns)
+      ) {
+        best = { cell, distance, turns };
+      }
+    }
+
+    return best?.cell ?? null;
+  }
+
+  function isAvailableTravelCell(current: GameWorld, cell: number): boolean {
+    return current.grid.isWalkable(cell) && !current.isOccupied(cell);
+  }
+
+  function findHeroPath(current: GameWorld, target: number): number[] | null {
+    return findPath(current.grid, current.heroPos, target, {
+      neighbours: (cell) => current.grid.neighbours8(cell),
+      heuristic: (from, to) => chebyshevDistance(current, from, to),
+      passable: (cell) =>
+        current.grid.isWalkable(cell) && (cell === target || !current.isOccupied(cell)),
+    });
+  }
+
+  function chebyshevDistance(current: GameWorld, from: number, to: number): number {
+    return Math.max(
+      Math.abs(current.grid.xOf(from) - current.grid.xOf(to)),
+      Math.abs(current.grid.yOf(from) - current.grid.yOf(to)),
+    );
   }
 
   function startTargetingMode(mode: TargetingMode): void {
     if (appState !== "Playing" || !world?.heroAlive) return;
+    if (mode === "look") {
+      if (targetingMode === "look") {
+        exitExploreMode();
+      } else {
+        enterExploreMode();
+      }
+      return;
+    }
+
     cancelAutoWalk();
     targetingMode = mode;
     selectedCell = null;
-    bus.emit("combat:log", { line: mode === "look" ? "Select a cell." : "Select a target." });
+    bus.emit("combat:log", { line: "Select a target." });
   }
 
   /** Begin approaching a targeted enemy; the per-step logic stops adjacent. */
@@ -475,6 +598,8 @@ async function boot(): Promise<void> {
 
     // Re-path toward the target's CURRENT cell each step (it may have moved).
     const path = findPath(current.grid, current.heroPos, target.pos, {
+      neighbours: (cell) => current.grid.neighbours8(cell),
+      heuristic: (from, to) => chebyshevDistance(current, from, to),
       passable: (cell) =>
         current.grid.isWalkable(cell) && (cell === target.pos || !current.isOccupied(cell)),
     });
@@ -500,6 +625,56 @@ async function boot(): Promise<void> {
     if (heroDistanceTo(target.pos) === 1) cancelAutoWalk(); // reached melee range
   }
 
+  function currentViewport(current: GameWorld) {
+    return computeCameraViewport(
+      window.innerWidth,
+      window.innerHeight,
+      current.grid,
+      current.heroPos,
+      zoomMultiplier,
+      cameraPan,
+    );
+  }
+
+  function clampCurrentCameraPan(current: GameWorld, pan = cameraPan): void {
+    cameraPan = clampCameraPan(
+      window.innerWidth,
+      window.innerHeight,
+      current.grid,
+      current.heroPos,
+      zoomMultiplier,
+      pan,
+    );
+  }
+
+  function resetCameraPan(): void {
+    cameraPan = { x: 0, y: 0 };
+  }
+
+  function enterExploreMode(): void {
+    if (targetingMode === "look") return;
+    cancelAutoWalk();
+    targetingMode = "look";
+    selectedCell = null;
+    bus.emit("combat:log", { line: "Explore mode. Drag to pan, tap to inspect. Esc to return." });
+  }
+
+  function exitExploreMode(line = "Camera recentered."): void {
+    if (targetingMode !== "look" && cameraPan.x === 0 && cameraPan.y === 0) return;
+    targetingMode = null;
+    selectedCell = null;
+    resetCameraPan();
+    bus.emit("combat:log", { line });
+  }
+
+  function panExploreCamera(current: GameWorld, dx: number, dy: number): void {
+    enterExploreMode();
+    clampCurrentCameraPan(current, {
+      x: cameraPan.x + dx,
+      y: cameraPan.y + dy,
+    });
+  }
+
   const input = new InputManager(canvas, bus);
   input.registerUI(rectLayer("hud", { x: 0, y: 0, w: 1e6, h: MAP_TOP_INSET }, 10));
 
@@ -507,21 +682,16 @@ async function boot(): Promise<void> {
     if (appState !== "Playing" || !world) return;
     const current = world;
     cancelAutoWalk(); // a tap always interrupts whatever travel was happening
-    const vp = computeCameraViewport(
-      window.innerWidth,
-      window.innerHeight,
-      current.grid,
-      current.heroPos,
-      zoomMultiplier,
-    );
+    clampCurrentCameraPan(current);
+    const vp = currentViewport(current);
     const cell = pixelToCell(vp, current.grid, x, y);
     selectedCell = cell;
 
     if (targetingMode !== null) {
       const mode = targetingMode;
-      targetingMode = null;
-      if (cell !== null && mode === "ranged") {
-        current.rangedAttack(cell);
+      if (mode === "ranged") {
+        targetingMode = null;
+        if (cell !== null) current.rangedAttack(cell);
       } else if (cell !== null && mode === "look") {
         selectedCell = cell;
         bus.emit("combat:log", { line: describeLookCell(current, cell) });
@@ -565,8 +735,20 @@ async function boot(): Promise<void> {
         handleTravelTap(plan.cell);
         break;
       case "none":
+        if (cell !== null && cell !== current.heroPos) {
+          const fallback = resolveTravelTarget(current, cell);
+          if (fallback !== null && fallback !== current.heroPos) {
+            selectedCell = fallback;
+            startAutoWalk(fallback);
+          }
+        }
         break;
     }
+  });
+
+  bus.on("input:world-pan", ({ dx, dy }) => {
+    if (appState !== "Playing" || !world || targetingMode === "ranged") return;
+    panExploreCamera(world, dx, dy);
   });
 
   canvas.addEventListener(
@@ -576,6 +758,7 @@ async function boot(): Promise<void> {
       e.preventDefault();
       const delta = -e.deltaY * WHEEL_ZOOM_STEP;
       zoomMultiplier = clampZoomMultiplier(zoomMultiplier * (1 + delta));
+      if (world) clampCurrentCameraPan(world);
     },
     { passive: false },
   );
@@ -603,6 +786,7 @@ async function boot(): Promise<void> {
         zoomMultiplier = clampZoomMultiplier(
           zoomMultiplier * (1 + (ratio - 1) * PINCH_ZOOM_SENSITIVITY),
         );
+        if (world) clampCurrentCameraPan(world);
       }
       pinchDistance = nextDistance;
     },
@@ -678,31 +862,30 @@ async function boot(): Promise<void> {
     stepAutoWalk();
   });
 
-  const MOVES: Record<string, [number, number]> = {
-    ArrowUp: [0, -1],
-    w: [0, -1],
-    ArrowDown: [0, 1],
-    s: [0, 1],
-    ArrowLeft: [-1, 0],
-    a: [-1, 0],
-    ArrowRight: [1, 0],
-    d: [1, 0],
-  };
-
   window.addEventListener("keydown", (e) => {
     if (appState !== "Playing" || !world) return;
     if (targetingMode !== null && e.key === "Escape") {
       e.preventDefault();
-      targetingMode = null;
-      selectedCell = null;
-      bus.emit("combat:log", { line: "Targeting cancelled." });
+      if (targetingMode === "look") {
+        exitExploreMode();
+      } else {
+        targetingMode = null;
+        selectedCell = null;
+        bus.emit("combat:log", { line: "Targeting cancelled." });
+      }
       return;
     }
     if (overlay?.handleKeyDown(e)) return;
 
-    const move = MOVES[e.key];
+    const normalizedKey = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    const move = CARDINAL_AND_DIAGONAL_KEYS[normalizedKey] ?? NUMPAD_MOVES[e.code];
     if (move) {
       e.preventDefault();
+      if (targetingMode === "look") {
+        const tileSize = currentViewport(world).tileSize;
+        panExploreCamera(world, -move[0] * tileSize, -move[1] * tileSize);
+        return;
+      }
       world.tryMoveHero(move[0], move[1]);
       return;
     }
@@ -711,11 +894,13 @@ async function boot(): Promise<void> {
       world.descend();
       if (world.depth !== before) playSfx("descend");
       selectedCell = null;
+      resetCameraPan();
     } else if (e.key === "<" || e.key === ",") {
       const before = world.depth;
       world.ascend();
       if (world.depth !== before) playSfx("descend");
       selectedCell = null;
+      resetCameraPan();
     } else if (e.key === "q") {
       e.preventDefault();
       if (world.quaffHealing()) playSfx("drink");
@@ -743,7 +928,7 @@ async function boot(): Promise<void> {
       ctx.fillRect(0, 0, frame.width, frame.height);
       return;
     }
-    drawMapScene(ctx, frame, view(), assets, zoomMultiplier);
+    drawMapScene(ctx, frame, view(), assets, zoomMultiplier, cameraPan);
   });
 
   const loop = new GameLoop({ bus });
