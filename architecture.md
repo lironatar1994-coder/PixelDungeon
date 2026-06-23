@@ -872,3 +872,21 @@ door second, ground item third, generic travel last. **`GameWorld`**
 `isClosedDoor` and `hasGroundItem` predicates so the browser orchestrator can
 issue existing core intents without inspecting mutable level details directly.
 Focused tests cover distance-map routing and tap priority.
+
+### Phase 18.1 - SPD-Style Room Graph Generation COMPLETE
+Reworked regular floor generation after reviewing SPD's `RegularLevel`,
+`RegularBuilder`, `LoopBuilder`, `FigureEightBuilder`, and `RegularPainter`.
+The important architectural idea is that SPD builds a connected graph of
+typed rooms, then paints door seams and room details, rather than carving
+long arbitrary tunnels between BSP room centers.
+
+**`LevelGenerator`** ([src/core/procgen/LevelGenerator.ts](src/core/procgen/LevelGenerator.ts))
+now places an entrance room, a main path toward an exit room, side branches,
+and occasional extra door connections for loops. Rooms are separated by
+one-tile door seams, so the dungeon feels more like adjacent authored rooms
+and less like random rectangles connected by wandering corridors. The output
+is still pure, seeded, headless, save-compatible `Grid`/`Rect`/`Terrain` data;
+rendering and UI remain unchanged.
+
+Focused procgen tests now verify determinism, connected rooms, door-seam
+geometry, varied room graphs, and deterministic loot placement.

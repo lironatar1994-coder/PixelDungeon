@@ -73,6 +73,46 @@ describe("generateLevel", () => {
     expect(level.entrance).not.toBe(level.exit);
   });
 
+  it("creates SPD-style room seams with door cells instead of only open tunnels", () => {
+    const level = generateLevel(42, 42, new RNG("doors"));
+    const doors = level.grid
+      .snapshot()
+      .map((terrain, cell) => ({ terrain, cell }))
+      .filter(({ terrain }) => terrain === Terrain.DOOR)
+      .map(({ cell }) => cell);
+
+    expect(doors.length).toBeGreaterThanOrEqual(4);
+    for (const door of doors) {
+      const north = level.grid.get(door - level.grid.width);
+      const south = level.grid.get(door + level.grid.width);
+      const west = level.grid.get(door - 1);
+      const east = level.grid.get(door + 1);
+      const horizontalDoor = level.grid.isWalkable(door - 1) && level.grid.isWalkable(door + 1);
+      const verticalDoor = level.grid.isWalkable(door - level.grid.width) && level.grid.isWalkable(door + level.grid.width);
+
+      expect(horizontalDoor || verticalDoor).toBe(true);
+      expect([north, south, west, east].filter((terrain) => terrain === Terrain.WALL).length)
+        .toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it("generates a varied room graph across several seeds", () => {
+    for (const seed of ["graph-a", "graph-b", "graph-c", "graph-d"]) {
+      const level = generateLevel(42, 42, new RNG(seed));
+      expect(level.rooms.length).toBeGreaterThanOrEqual(7);
+      expect(level.rooms.some((room) => room.area >= 72)).toBe(true);
+    }
+  });
+
+  it("still produces a room graph at the smallest regular dungeon size", () => {
+    for (const seed of ["small-a", "small-b", "small-c"]) {
+      const level = generateLevel(33, 33, new RNG(seed));
+      const reach = reachable(level.grid, level.entrance);
+      expect(level.rooms.length).toBeGreaterThanOrEqual(5);
+      expect(reach.has(level.exit)).toBe(true);
+    }
+  });
+
   it("places deterministic loot only on walkable non-stair cells", () => {
     const a = generateLevel(40, 40, new RNG("loot"), undefined, {
       itemIds: ["ration", "potion_healing"],

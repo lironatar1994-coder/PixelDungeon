@@ -160,15 +160,19 @@ export function isMapCameraDetached(): boolean {
   return isCameraDetached;
 }
 
+export let cameraFocusX: number | null = null;
+export let cameraFocusY: number | null = null;
+const CAMERA_PAN_INTENSITY = 8.0;
+
 export function computeMapSceneViewport(
   viewW: number,
   viewH: number,
   grid: Grid,
-  heroPos: number,
+  focusPos: { x: number; y: number },
   zoomMultiplier = 1,
 ): Viewport {
   const pan = currentCameraPan();
-  return computeCameraViewport(viewW, viewH, grid, heroPos, zoomMultiplier, pan, {
+  return computeCameraViewport(viewW, viewH, grid, focusPos, zoomMultiplier, pan, {
     allowOutOfBounds: isCameraDetached,
   });
 }
@@ -228,7 +232,47 @@ export function drawMapScene(
   zoomMultiplier = 1,
 ): void {
   const { grid } = view;
-  const vp = computeMapSceneViewport(frame.width, frame.height, grid, view.heroPos, zoomMultiplier);
+
+  let targetX = grid.xOf(view.heroPos) + 0.5;
+  let targetY = grid.yOf(view.heroPos) + 0.5;
+
+  for (const move of activeMoves.values()) {
+    if (move.toCell === view.heroPos) {
+      const elapsedMs = nowMs() - move.startedAtMs;
+      const progress = Math.max(0, Math.min(1, elapsedMs / MOVE_TWEEN_DURATION_MS));
+      if (progress < 1) {
+        const fromX = grid.xOf(move.fromCell) + 0.5;
+        const fromY = grid.yOf(move.fromCell) + 0.5;
+        const toX = grid.xOf(move.toCell) + 0.5;
+        const toY = grid.yOf(move.toCell) + 0.5;
+        targetX = fromX + (toX - fromX) * progress;
+        targetY = fromY + (toY - fromY) * progress;
+      }
+      break;
+    }
+  }
+
+  if (
+    cameraFocusX === null ||
+    cameraFocusY === null ||
+    Math.abs(cameraFocusX - targetX) > 10 ||
+    Math.abs(cameraFocusY - targetY) > 10
+  ) {
+    cameraFocusX = targetX;
+    cameraFocusY = targetY;
+  } else {
+    const dt = Math.min(0.1, frame.dt);
+    cameraFocusX += (targetX - cameraFocusX) * Math.min(1, dt * CAMERA_PAN_INTENSITY);
+    cameraFocusY += (targetY - cameraFocusY) * Math.min(1, dt * CAMERA_PAN_INTENSITY);
+  }
+
+  const vp = computeMapSceneViewport(
+    frame.width, 
+    frame.height, 
+    grid, 
+    { x: cameraFocusX, y: cameraFocusY }, 
+    zoomMultiplier
+  );
   const ts = vp.tileSize;
   const idleElapsed = idleElapsedAfterStillness(frame.elapsed, view);
   updateCombatAnimations(frame.elapsed);

@@ -41,12 +41,12 @@ export function computeCameraViewport(
   viewW: number,
   viewH: number,
   grid: Grid,
-  focusCell: number,
+  focusPos: { x: number; y: number },
   zoomMultiplier = 1,
   pan: CameraPan = { x: 0, y: 0 },
   opts: CameraViewportOptions = {},
 ): Viewport {
-  const metrics = cameraMetrics(viewW, viewH, grid, focusCell, zoomMultiplier);
+  const metrics = cameraMetrics(viewW, viewH, grid, focusPos, zoomMultiplier);
   const appliedPan = opts.allowOutOfBounds
     ? finitePan(pan)
     : clampPan(metrics, viewW, viewH, pan);
@@ -66,11 +66,11 @@ export function clampCameraPan(
   viewW: number,
   viewH: number,
   grid: Grid,
-  focusCell: number,
+  focusPos: { x: number; y: number },
   zoomMultiplier = 1,
   pan: CameraPan = { x: 0, y: 0 },
 ): CameraPan {
-  return clampPan(cameraMetrics(viewW, viewH, grid, focusCell, zoomMultiplier), viewW, viewH, pan);
+  return clampPan(cameraMetrics(viewW, viewH, grid, focusPos, zoomMultiplier), viewW, viewH, pan);
 }
 
 export function clampZoomMultiplier(value: number): number {
@@ -100,7 +100,7 @@ function cameraMetrics(
   viewW: number,
   viewH: number,
   grid: Grid,
-  focusCell: number,
+  focusPos: { x: number; y: number },
   zoomMultiplier: number,
 ): {
   tileSize: number;
@@ -119,8 +119,8 @@ function cameraMetrics(
   );
   const tileSize = Math.max(1, Math.floor(baseTileSize * zoom));
   const scale = tileSize / BASE_TILE_SIZE;
-  const focusX = grid.xOf(focusCell) + 0.5;
-  const focusY = grid.yOf(focusCell) + 0.5;
+  const focusX = focusPos.x + 0.5;
+  const focusY = focusPos.y + 0.5;
   const mapW = grid.width * tileSize;
   const mapH = grid.height * tileSize;
   const idealX = Math.floor(viewW / 2 - focusX * tileSize);

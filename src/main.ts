@@ -17,6 +17,8 @@ import { AudioManager } from "@/audio/AudioManager";
 import { GameLoop } from "@/core/GameLoop";
 import { Renderer } from "@/render/Renderer";
 import {
+  cameraFocusX,
+  cameraFocusY,
   clearCombatAnimations,
   computeMapSceneViewport,
   detachMapCameraBy,
@@ -700,11 +702,13 @@ async function boot(): Promise<void> {
   }
 
   function currentViewport(current: GameWorld) {
+    const cx = cameraFocusX !== null ? cameraFocusX : current.grid.xOf(current.heroPos) + 0.5;
+    const cy = cameraFocusY !== null ? cameraFocusY : current.grid.yOf(current.heroPos) + 0.5;
     return computeMapSceneViewport(
       window.innerWidth,
       window.innerHeight,
       current.grid,
-      current.heroPos,
+      { x: cx, y: cy },
       zoomMultiplier,
     );
   }
