@@ -12,6 +12,7 @@ Antigravity AI
 # Work Guidance
 - Implement camera center focus clamped to map boundaries.
 - Support responsive viewport scale/zoom.
+- Keep camera panning render-only, but re-lock follow to the hero when the hero participates in combat.
 - Support real-time actor idle squashing and tween animations.
 
 # Verification

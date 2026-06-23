@@ -887,7 +887,9 @@ async function boot(): Promise<void> {
   // The hero taking a hit interrupts travel immediately (event-driven, so the
   // orchestrator no longer has to poll HP each step).
   bus.on("hero:damaged", () => {
-    if (appState === "Playing") cancelAutoWalk();
+    if (appState !== "Playing") return;
+    cancelAutoWalk();
+    snapMapCameraToHero();
   });
 
   bus.on("hero:damaged", ({ source, hp }) => {
@@ -928,6 +930,12 @@ async function boot(): Promise<void> {
 
   bus.on("combat:strike", (event) => {
     queueCombatStrikeAnimation(event);
+    if (
+      appState === "Playing" &&
+      (event.attackerId === "hero" || event.defenderId === "hero")
+    ) {
+      snapMapCameraToHero();
+    }
   });
 
   bus.on("actor:move", (event) => {

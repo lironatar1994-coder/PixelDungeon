@@ -71,6 +71,12 @@ export interface ItemDef {
   heal?: number;
   /** Potion: permanent strength gain when consumed. */
   strengthBonus?: number;
+  /** Potion/scroll effect registry id. */
+  effectId?: string;
+  /** Generic effect magnitude; meaning depends on effectId. */
+  potency?: number;
+  /** Generic effect duration in hero turns; meaning depends on effectId. */
+  duration?: number;
   /** Any other type-specific fields preserved from JSON. */
   [key: string]: unknown;
 }

@@ -158,9 +158,10 @@ export function parseItem(raw: unknown): ItemDef | null {
   };
   if ("tier" in rec) item.tier = num(rec, "tier", 1, { int: true, min: 1, max: 5 });
   if ("sprite" in rec) item.sprite = str(rec, "sprite", id);
-  for (const key of ["damageMin", "damageMax", "defense", "heal", "strengthBonus"] as const) {
+  for (const key of ["damageMin", "damageMax", "defense", "heal", "strengthBonus", "potency", "duration"] as const) {
     if (key in rec) item[key] = num(rec, key, 0, { int: true, min: 0 });
   }
+  if ("effectId" in rec) item.effectId = str(rec, "effectId", "");
   if ("strengthRequired" in rec) {
     item.strengthRequired = num(rec, "strengthRequired", 0, { int: true, min: 0 });
   }

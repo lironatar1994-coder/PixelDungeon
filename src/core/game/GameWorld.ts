@@ -32,6 +32,7 @@ import { resolveAttack } from "@/core/combat/resolveAttack";
 import type { BaseStats, CombatStatsSnapshot } from "@/core/combat/CombatStats";
 import { Inventory, type InventorySnapshot } from "@/core/items/Inventory";
 import { ItemFactory } from "@/core/items/ItemFactory";
+import { quaffPotion, potionEffectId, type WorldTimedEffect } from "@/core/items/PotionEffects";
 import { ContentDatabase, type ContentDatabase as ContentDatabaseType } from "@/core/data/ContentDatabase";
 import type { HeroDef } from "@/core/data/types";
 
@@ -72,6 +73,13 @@ export interface ItemPickupInfo {
   cell: number;
 }
 
+export interface ItemQuaffedInfo {
+  itemUid: string;
+  itemId: string;
+  effectId: string;
+  cell: number;
+}
+
 export interface HeroLevelUpInfo {
   level: number;
 }
@@ -96,6 +104,8 @@ export interface WorldOptions {
   onActorDeath?: (info: ActorDeathInfo) => void;
   /** Fired after an item is removed from the floor and added to inventory. */
   onItemPickup?: (info: ItemPickupInfo) => void;
+  /** Fired after a potion successfully applies its core effect. */
+  onItemQuaffed?: (info: ItemQuaffedInfo) => void;
   /** Fired after the hero gains one or more levels. */
   onHeroLevelUp?: (info: HeroLevelUpInfo) => void;
 }
@@ -132,6 +142,7 @@ export interface GameWorldSnapshot {
   enemyAiRngState: number;
   heroDead: boolean;
   log: string[];
+  worldEffects?: WorldTimedEffect[];
 }
 
 /** The hero's intrinsic (unarmed, unarmored) base stats. */
@@ -164,6 +175,7 @@ export class GameWorld {
   private readonly onActorMove?: (info: ActorMoveInfo) => void;
   private readonly onActorDeath?: (info: ActorDeathInfo) => void;
   private readonly onItemPickup?: (info: ItemPickupInfo) => void;
+  private readonly onItemQuaffed?: (info: ItemQuaffedInfo) => void;
   private readonly onHeroLevelUp?: (info: HeroLevelUpInfo) => void;
   private enemyAiRng = new RNG(0);
 
@@ -174,6 +186,7 @@ export class GameWorld {
   public heroDead = false;
   public deathReason: string | undefined;
   private readonly logLines: string[] = [];
+  private worldEffects: WorldTimedEffect[] = [];
 
   constructor(seed: string, content: ContentDatabaseType, opts: WorldOptions = {}) {
     this.content = content;
@@ -189,6 +202,7 @@ export class GameWorld {
     this.onActorMove = opts.onActorMove;
     this.onActorDeath = opts.onActorDeath;
     this.onItemPickup = opts.onItemPickup;
+    this.onItemQuaffed = opts.onItemQuaffed;
     this.onHeroLevelUp = opts.onHeroLevelUp;
 
     this.createHero(); // the hero persists across floors
@@ -198,7 +212,7 @@ export class GameWorld {
   static fromSnapshot(
     snapshot: GameWorldSnapshot,
     content: ContentDatabaseType,
-    opts: Pick<WorldOptions, "onChange" | "onLog" | "onHeroDamaged" | "onCombatStrike" | "onActorMove" | "onActorDeath" | "onItemPickup" | "onHeroLevelUp"> = {},
+    opts: Pick<WorldOptions, "onChange" | "onLog" | "onHeroDamaged" | "onCombatStrike" | "onActorMove" | "onActorDeath" | "onItemPickup" | "onItemQuaffed" | "onHeroLevelUp"> = {},
   ): GameWorld {
     const world = new GameWorld(snapshot.seed, content, {
       visionRadius: snapshot.visionRadius,
@@ -211,6 +225,7 @@ export class GameWorld {
       onActorMove: opts.onActorMove,
       onActorDeath: opts.onActorDeath,
       onItemPickup: opts.onItemPickup,
+      onItemQuaffed: opts.onItemQuaffed,
       onHeroLevelUp: opts.onHeroLevelUp,
     });
     world.restore(snapshot);

@@ -228,6 +228,8 @@ export class MainMenu {
     
     const iconDiv = document.createElement("div");
     iconDiv.className = "mm-button-icon";
+    const iconClass = iconClassForLabel(label);
+    if (iconClass) iconDiv.classList.add(`mm-icon-${iconClass}`);
     if (iconHtml) iconDiv.innerHTML = iconHtml;
 
     const labelDiv = document.createElement("div");
@@ -261,15 +263,34 @@ export class MainMenu {
   }
 }
 
+function escapeText(text: string): string {
+  const span = document.createElement("span");
+  span.textContent = text;
+  return span.innerHTML;
+}
+
+function iconClassForLabel(label: string): string {
+  switch (label) {
+    case "Enter the Dungeon":
+    case "New Game":
+      return "enter";
+    case "Run History":
+    case "Rankings":
+      return "rankings";
+    case "Settings":
+      return "prefs";
+    case "About":
+      return "shpx";
+    case "Back":
+      return "back";
+    default:
+      return "";
+  }
+}
+
 function tag(text: string): HTMLSpanElement {
   const span = document.createElement("span");
   span.className = "mm-tag";
   span.textContent = text;
   return span;
-}
-
-function escapeText(text: string): string {
-  const span = document.createElement("span");
-  span.textContent = text;
-  return span.innerHTML;
 }

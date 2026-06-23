@@ -640,8 +640,16 @@ export class GameOverlay {
     frame.className = "go-frame";
 
     const banner = document.createElement("div");
-    banner.className = "go-banner";
-    banner.textContent = "Game Over";
+    banner.className = "go-banner go-banner-fallback";
+    const bannerScale = Math.min(4, Math.max(2.25, (window.innerWidth - 48) / 128));
+    const bannerStyle = this.assets?.cssStyleForSprite("gameOverBanner", bannerScale);
+    if (bannerStyle) {
+      banner.classList.remove("go-banner-fallback");
+      Object.assign(banner.style, bannerStyle);
+      banner.setAttribute("aria-label", "Game Over");
+    } else {
+      banner.textContent = "Game Over";
+    }
     frame.append(banner);
 
     if (state.hero.causeOfDeath) {
@@ -653,19 +661,36 @@ export class GameOverlay {
 
     const buttons = document.createElement("div");
     buttons.className = "go-buttons";
-    const newGame = this.goButton("New Game", "go-button-primary", () => this.restartRun());
-    const menu = this.goButton("Main Menu", "go-button", () => this.actions.mainMenu());
+    const newGame = this.goButton("New Game", "go-button-primary", "uiEnter", () => this.restartRun());
+    const menu = this.goButton("Menu", "go-button", "uiPrefs", () => this.actions.mainMenu());
     buttons.append(newGame, menu);
 
     frame.append(buttons);
     this.gameOverPanel.append(frame);
   }
 
-  private goButton(label: string, tone: string, onClick: () => void): HTMLButtonElement {
+  private goButton(label: string, tone: string, iconSprite: "uiEnter" | "uiPrefs", onClick: () => void): HTMLButtonElement {
     const button = document.createElement("button");
     button.type = "button";
     button.className = `go-button ${tone}`;
-    button.textContent = label;
+
+    const iconBox = document.createElement("span");
+    iconBox.className = "go-button-icon-box";
+    const icon = document.createElement("span");
+    icon.className = "go-button-icon";
+    const iconStyle = this.assets?.cssStyleForSprite(iconSprite, 2);
+    if (iconStyle) {
+      Object.assign(icon.style, iconStyle);
+    } else {
+      icon.textContent = iconSprite === "uiEnter" ? ">" : "*";
+    }
+    iconBox.append(icon);
+
+    const text = document.createElement("span");
+    text.className = "go-button-label";
+    text.textContent = label;
+
+    button.append(iconBox, text);
     button.addEventListener("click", onClick);
     return button;
   }

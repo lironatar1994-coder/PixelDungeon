@@ -122,69 +122,124 @@
 /* --- buttons --- */
 #main-menu.mm-root .mm-actions {
   display: grid;
-  gap: 12px;
-  width: 100%;
+  gap: 6px;
+  width: min(340px, 100%);
+  justify-self: center;
+  margin: 0 auto;
 }
 #main-menu.mm-root .mm-button {
-  border: 10px solid transparent;
-  border-image: var(--spd-button-frame) 4 fill / 10px / 0 stretch;
-  padding: 8px 12px;
-  color: #f5ebd0;
-  background: transparent;
+  min-height: 38px;
+  border: 2px solid #c7cec0;
+  outline: 2px solid rgba(31, 37, 30, 0.95);
+  outline-offset: -4px;
+  box-shadow:
+    inset 0 0 0 2px rgba(91, 101, 84, 0.92),
+    inset 0 4px 0 rgba(255, 255, 255, 0.08),
+    inset 0 -5px 0 rgba(0, 0, 0, 0.28),
+    3px 3px 0 rgba(0, 0, 0, 0.85);
+  padding: 3px 9px 3px 4px;
+  color: #ffffff;
+  background:
+    linear-gradient(180deg, rgba(66, 72, 63, 0.94), rgba(43, 49, 41, 0.94));
   cursor: pointer;
-  font: 16px "SPD Pixel", "Trebuchet MS", "Segoe UI", sans-serif;
-  letter-spacing: 1px;
-  display: inline-flex;
+  font: 20px "SPD Pixel", "Trebuchet MS", "Segoe UI", sans-serif;
+  letter-spacing: 0;
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
   align-items: center;
-  justify-content: flex-start;
   position: relative;
+  text-align: left;
+  text-shadow:
+    3px 3px 0 #000,
+    -2px 0 0 #000,
+    0 -2px 0 #000;
+  image-rendering: pixelated;
 }
 #main-menu.mm-root .mm-button-icon {
-  width: 28px;
+  width: 34px;
   height: 28px;
-  flex-shrink: 0;
-  background: #111411;
-  border: 2px solid #000;
-  border-bottom-color: #3b423c;
-  border-right-color: #3b423c;
+  display: grid;
+  place-items: center;
+  justify-self: start;
+  border: 2px solid #9ca797;
+  outline: 2px solid rgba(28, 34, 27, 0.9);
+  outline-offset: -4px;
+  background:
+    linear-gradient(180deg, rgba(49, 56, 47, 0.92), rgba(30, 35, 29, 0.92));
+  box-shadow:
+    inset 0 0 0 2px rgba(105, 116, 99, 0.55),
+    inset 0 -4px 0 rgba(0, 0, 0, 0.22);
   box-sizing: border-box;
 }
-#main-menu.mm-root .mm-button-label {
-  flex-grow: 1;
-  text-align: center;
-  margin-right: 28px;
+#main-menu.mm-root .mm-button-icon::before {
+  content: "";
+  display: block;
+  image-rendering: pixelated;
+  background-image: var(--spd-interface-icons);
+  background-size: 512px 256px;
 }
-#main-menu.mm-root .mm-button:hover { filter: brightness(1.18); }
-#main-menu.mm-root .mm-button:active { transform: translateY(1px); }
+#main-menu.mm-root .mm-button-label {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: nowrap;
+  transform: translateY(-1px);
+  padding-left: 1px;
+}
+#main-menu.mm-root .mm-button:hover {
+  filter: brightness(1.1);
+}
+#main-menu.mm-root .mm-button:active {
+  transform: translate(1px, 1px);
+  box-shadow:
+    inset 0 0 0 2px rgba(72, 82, 68, 0.92),
+    inset 0 3px 0 rgba(0, 0, 0, 0.18),
+    1px 1px 0 rgba(0, 0, 0, 0.9);
+  filter: brightness(0.96);
+}
 #main-menu.mm-root .mm-button-primary {
-  border-image-source: var(--spd-button-frame-grey);
-  color: #fff1b7;
-  font-size: 18px;
-  padding: 16px;
+  color: #ffffff;
+  font-size: 21px;
+  min-height: 40px;
 }
 #main-menu.mm-root .mm-button-wide { width: 100%; }
 #main-menu.mm-root .mm-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  gap: 7px;
 }
 #main-menu.mm-root .mm-button-tile { width: 100%; }
 #main-menu.mm-root .mm-button-disabled {
-  opacity: 0.52;
+  opacity: 0.72;
   cursor: default;
-  filter: grayscale(0.45);
+  filter: grayscale(0.35) brightness(0.82);
 }
-#main-menu.mm-root .mm-button-disabled:hover { filter: grayscale(0.45); }
+#main-menu.mm-root .mm-button-disabled:hover { filter: grayscale(0.35) brightness(0.82); }
 #main-menu.mm-root .mm-button-disabled:active { transform: none; }
+#main-menu.mm-root .mm-icon-enter::before { width: 32px; height: 32px; background-position: 0 0; }
+#main-menu.mm-root .mm-icon-gold::before { width: 34px; height: 32px; background-position: -34px 0; }
+#main-menu.mm-root .mm-icon-rankings::before { width: 34px; height: 32px; background-position: -68px 0; }
+#main-menu.mm-root .mm-icon-badges::before { width: 32px; height: 32px; background-position: -102px 0; }
+#main-menu.mm-root .mm-icon-news::before { width: 32px; height: 30px; background-position: -136px 0; }
+#main-menu.mm-root .mm-icon-changes::before { width: 30px; height: 30px; background-position: -170px 0; }
+#main-menu.mm-root .mm-icon-prefs::before { width: 28px; height: 28px; background-position: -204px 0; }
+#main-menu.mm-root .mm-icon-shpx::before { width: 32px; height: 32px; background-position: -238px 0; }
+#main-menu.mm-root .mm-icon-back::before { width: 28px; height: 18px; background-position: -384px -32px; }
 #main-menu.mm-root .mm-tag {
+  position: absolute;
+  right: 6px;
+  top: 4px;
   font-size: 10px;
   letter-spacing: 0;
-  padding: 1px 5px;
-  color: #14110a;
+  padding: 1px 4px;
+  color: #100d08;
   background: #cdb46a;
+  text-shadow: none;
+  box-shadow: 1px 1px 0 #000;
 }
 #main-menu.mm-root .mm-status {
-  margin: 8px 0 0;
+  margin: 6px 0 0;
   text-align: center;
   color: #9fb0a2;
   font-size: 13px;
@@ -300,5 +355,16 @@
   #main-menu.mm-root .mm-scene { width: calc(100vw - 20px); padding-top: 22px; }
   #main-menu.mm-root .mm-logo-line { font-size: 46px; }
   #main-menu.mm-root .mm-logo-sub { font-size: 14px; letter-spacing: 3px; }
-  #main-menu.mm-root .mm-button-primary { font-size: 16px; padding: 14px; }
+  #main-menu.mm-root .mm-actions { width: min(310px, 100%); }
+  #main-menu.mm-root .mm-button {
+    grid-template-columns: 40px minmax(0, 1fr);
+    min-height: 36px;
+    font-size: 17px;
+    padding-right: 7px;
+  }
+  #main-menu.mm-root .mm-button-primary { font-size: 18px; min-height: 38px; }
+  #main-menu.mm-root .mm-button-icon {
+    width: 30px;
+    height: 26px;
+  }
 }

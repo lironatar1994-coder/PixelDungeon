@@ -13,6 +13,7 @@ Antigravity AI
 - Ensure mobile layout splits controls comfortably for thumb zones.
 - Support keypress overrides (e.g. Escape closing menus).
 - RTL and Hebrew UI support as per general preferences.
+- Preserve existing main-menu actions during visual polish unless the user explicitly asks to add or remove entries.
 
 # Verification
 - Run type check with `tsc --noEmit`.

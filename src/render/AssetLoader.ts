@@ -15,7 +15,8 @@ export type SpriteSheetKey =
   | "itemIcons"
   | "textIcons"
   | "toolbar"
-  | "interfaceIcons";
+  | "interfaceIcons"
+  | "banners";
 
 export type SpriteKey =
   | "floor"
@@ -51,6 +52,9 @@ export type SpriteKey =
   | "uiQuickslot"
   | "uiHeroStats"
   | "uiControls"
+  | "uiEnter"
+  | "uiPrefs"
+  | "gameOverBanner"
   | "textPhysDamage";
 
 export interface SpriteRect {
@@ -99,6 +103,7 @@ const SHEET_URLS: Record<SpriteSheetKey, string> = {
   textIcons: `${BASE}assets/text_icons.png`,
   toolbar: `${BASE}assets/toolbar.png`,
   interfaceIcons: `${BASE}assets/icons.png`,
+  banners: `${BASE}assets/banners.png`,
 };
 
 function xy(x: number, y: number, width = 16): number {
@@ -165,6 +170,12 @@ const SPRITES: Record<SpriteKey, SpriteRect> = {
   // Icons.java: STATS=(128,16,16,13), KEYBOARD=(112,16,15,12).
   uiHeroStats: { sheet: "interfaceIcons", x: 128, y: 16, w: 16, h: 13 },
   uiControls: { sheet: "interfaceIcons", x: 112, y: 16, w: 15, h: 12 },
+  // Icons.java: ENTER=(0,0,16,16), PREFS=(102,0,14,14).
+  uiEnter: { sheet: "interfaceIcons", x: 0, y: 0, w: 16, h: 16 },
+  uiPrefs: { sheet: "interfaceIcons", x: 102, y: 0, w: 14, h: 14 },
+
+  // BannerSprites.java: GAME_OVER crop from interfaces/banners.png.
+  gameOverBanner: { sheet: "banners", x: 128, y: 157, w: 128, h: 35 },
 
   // FloatingText.java: TEXT_ICONS film is 7x8, PHYS_DMG is index 0.
   textPhysDamage: { sheet: "textIcons", x: 0, y: 0, w: 7, h: 8 },

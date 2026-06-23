@@ -10,6 +10,7 @@
   --spd-button-frame-grey: url("../public/assets/chrome_button_grey.png");
   --spd-button-frame-red: url("../public/assets/chrome_button_red.png");
   --spd-status-pane: url("../public/assets/status_pane.png");
+  --spd-interface-icons: url("../public/assets/icons.png");
   --action-size: 56px;
   --action-gap: 8px;
 }
