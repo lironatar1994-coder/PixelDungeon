@@ -32,7 +32,7 @@ import { resolveAttack } from "@/core/combat/resolveAttack";
 import type { BaseStats, CombatStatsSnapshot } from "@/core/combat/CombatStats";
 import { Inventory, type InventorySnapshot } from "@/core/items/Inventory";
 import { ItemFactory } from "@/core/items/ItemFactory";
-import { quaffPotion, potionEffectId, type WorldTimedEffect } from "@/core/items/PotionEffects";
+import type { WorldTimedEffect } from "@/core/items/PotionEffects";
 import { ContentDatabase, type ContentDatabase as ContentDatabaseType } from "@/core/data/ContentDatabase";
 import type { HeroDef } from "@/core/data/types";
 
@@ -175,7 +175,6 @@ export class GameWorld {
   private readonly onActorMove?: (info: ActorMoveInfo) => void;
   private readonly onActorDeath?: (info: ActorDeathInfo) => void;
   private readonly onItemPickup?: (info: ItemPickupInfo) => void;
-  private readonly onItemQuaffed?: (info: ItemQuaffedInfo) => void;
   private readonly onHeroLevelUp?: (info: HeroLevelUpInfo) => void;
   private enemyAiRng = new RNG(0);
 
@@ -186,7 +185,6 @@ export class GameWorld {
   public heroDead = false;
   public deathReason: string | undefined;
   private readonly logLines: string[] = [];
-  private worldEffects: WorldTimedEffect[] = [];
 
   constructor(seed: string, content: ContentDatabaseType, opts: WorldOptions = {}) {
     this.content = content;
@@ -202,7 +200,6 @@ export class GameWorld {
     this.onActorMove = opts.onActorMove;
     this.onActorDeath = opts.onActorDeath;
     this.onItemPickup = opts.onItemPickup;
-    this.onItemQuaffed = opts.onItemQuaffed;
     this.onHeroLevelUp = opts.onHeroLevelUp;
 
     this.createHero(); // the hero persists across floors

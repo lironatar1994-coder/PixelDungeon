@@ -28,6 +28,8 @@ import {
   queueCombatStrikeAnimation,
   queueItemPickupAnimation,
   snapMapCameraToHero,
+  ACTOR_PERSPECTIVE_RAISE,
+  HERO_DRAW_SCALE,
   type MapView,
 } from "@/render/MapScene";
 import { AssetLoader, type SpriteKey } from "@/render/AssetLoader";
@@ -53,6 +55,7 @@ import { HistoryManager } from "@/core/save/HistoryManager";
 import { DistanceMap } from "@/core/pathfinding/DistanceMap";
 import { Terrain } from "@/core/grid/terrain";
 import { planTap } from "@/input/tapPlan";
+import { actorHitCellAtWorldPoint, type ActorHitCandidate } from "@/input/actorHitTest";
 import { InputManager } from "@/input/InputManager";
 import { rectLayer } from "@/input/PointerRouter";
 import { GameOverlay, type OverlayState } from "@/ui/GameOverlay";
@@ -724,28 +727,19 @@ async function boot(): Promise<void> {
   function actorCellAtScreen(current: GameWorld, vp: Viewport, px: number, py: number): number | null {
     const worldX = (px - vp.offsetX) / vp.tileSize;
     const worldY = (py - vp.offsetY) / vp.tileSize;
-    const candidates: Array<{ cell: number; priority: number; distance: number }> = [];
-    const addCandidate = (cell: number, priority: number): void => {
-      const centerX = current.grid.xOf(cell) + 0.5;
-      const centerY = current.grid.yOf(cell) + 0.5;
-      const dx = Math.abs(worldX - centerX);
-      const dy = Math.abs(worldY - centerY);
-      // SPD's CellSelector prioritizes sprites, but rejects clicks more than
-      // 12px from the tile center on a 16px tile. The slightly taller Y band
-      // accounts for bottom-anchored sprites whose heads live above the tile.
-      if (dx > 0.75 || dy > 1.05) return;
-      candidates.push({ cell, priority, distance: dx * dx + dy * dy });
+    const candidates: ActorHitCandidate[] = [];
+    const addCandidate = (cell: number, sprite: SpriteKey, visualScale: number, priority: number): void => {
+      candidates.push(actorHitCandidate(current, assets, cell, sprite, visualScale, priority));
     };
 
     for (const enemy of current.enemies) {
       if (enemy.stats.alive && current.fov.visible.has(enemy.pos)) {
-        addCandidate(enemy.pos, 0);
+        addCandidate(enemy.pos, assets.spriteForEnemy(enemy), 1, 0);
       }
     }
-    addCandidate(current.heroPos, 1);
+    addCandidate(current.heroPos, heroSpriteKey(current.heroSprite), HERO_DRAW_SCALE, 1);
 
-    candidates.sort((a, b) => a.distance - b.distance || a.priority - b.priority);
-    return candidates[0]?.cell ?? null;
+    return actorHitCellAtWorldPoint(candidates, worldX, worldY);
   }
 
   const input = new InputManager(canvas, bus, {
@@ -889,7 +883,7 @@ async function boot(): Promise<void> {
   bus.on("hero:damaged", () => {
     if (appState !== "Playing") return;
     cancelAutoWalk();
-    snapMapCameraToHero();
+    snapMapCameraToHero(true);
   });
 
   bus.on("hero:damaged", ({ source, hp }) => {
@@ -934,7 +928,7 @@ async function boot(): Promise<void> {
       appState === "Playing" &&
       (event.attackerId === "hero" || event.defenderId === "hero")
     ) {
-      snapMapCameraToHero();
+      snapMapCameraToHero(true);
     }
   });
 
@@ -1047,6 +1041,40 @@ function touchDistance(a: Touch, b: Touch): number {
 function heroSpriteKey(sprite: string): SpriteKey {
   if (sprite === "mage") return "mageHero";
   return "hero";
+}
+
+function actorHitCandidate(
+  world: GameWorld,
+  assetLoader: AssetLoader,
+  cell: number,
+  sprite: SpriteKey,
+  visualScale: number,
+  priority: number,
+): ActorHitCandidate {
+  const rect = assetLoader.sourceRect(sprite, world.depth);
+  let height = visualScale;
+  let width = height * (rect.w / rect.h);
+  if (width > 1) {
+    const fit = 1 / width;
+    width *= fit;
+    height *= fit;
+  }
+
+  const centerX = world.grid.xOf(cell) + 0.5;
+  const centerY = world.grid.yOf(cell) + 0.5;
+  const left = centerX - width / 2;
+  const bottom = world.grid.yOf(cell) + 1 - ACTOR_PERSPECTIVE_RAISE;
+  const top = bottom - height;
+  return {
+    cell,
+    centerX,
+    centerY,
+    left,
+    top,
+    right: left + width,
+    bottom,
+    priority,
+  };
 }
 
 function describeLookCell(world: GameWorld, cell: number): string {

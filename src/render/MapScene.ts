@@ -45,10 +45,10 @@ const MOVE_TWEEN_DURATION_MS = 180;
 const DAMAGE_POPUP_DURATION_SECONDS = 1;
 const DEATH_ANIMATION_EXTRA_SECONDS = 0.12;
 const PICKUP_ANIMATION_DURATION_SECONDS = 0.5;
-const HERO_DRAW_SCALE = 0.78;
+export const HERO_DRAW_SCALE = 0.78;
 // SPD CharSprite.worldToCamera raises actors by 6px on a 16px tile so their
 // feet stand on the raised floor plane, not on the tile's lower wall edge.
-const ACTOR_PERSPECTIVE_RAISE = 6 / 16;
+export const ACTOR_PERSPECTIVE_RAISE = 6 / 16;
 const WALL_CAST_SHADOW_ALPHA = 0.24;
 const TILE_SHEET_COLUMNS = 16;
 const RAISED_DOORS = sheetIndex(1, 8);
@@ -116,6 +116,13 @@ interface DamagePopup {
 
 interface ItemPickupAnimation extends ItemPickupAnimationEvent {
   startedAt: number | null;
+}
+
+interface WallOverlayDraw {
+  tileIndex: number;
+  drawX: number;
+  drawY: number;
+  visible: boolean;
 }
 
 const activeStrikes: CombatStrikeAnimation[] = [];
@@ -307,6 +314,7 @@ export function drawMapScene(
   const minY = Math.max(0, Math.floor(-vp.offsetY / ts) - 1);
   const maxX = Math.min(grid.width - 1, Math.ceil((frame.width - vp.offsetX) / ts) + 1);
   const maxY = Math.min(grid.height - 1, Math.ceil((frame.height - vp.offsetY) / ts) + 1);
+  const wallOverlays: WallOverlayDraw[] = [];
   for (let y = minY; y <= maxY; y++) {
     for (let x = minX; x <= maxX; x++) {
       const cell = grid.cell(x, y);
@@ -381,7 +389,7 @@ export function drawMapScene(
         }
 
         if (overhangIndex !== null) {
-          drawTileIndex(ctx, assets, overhangIndex, drawX, drawY, ts, 1, view.depth);
+          wallOverlays.push({ tileIndex: overhangIndex, drawX, drawY, visible });
         }
 
         if (isWalkableTerrain(terrain) && terrainAt(grid, x, y - 1) === Terrain.WALL) {
@@ -425,78 +433,99 @@ export function drawMapScene(
     drawGroundItem(ctx, assets, vp, grid, item);
   }
 
+  const actors: Array<{ cell: number; draw: () => void; sortY: number }> = [];
+  const actorOverlays: Array<() => void> = [];
+
   for (const enemy of view.enemies) {
     if (!view.visible.has(enemy.pos)) continue;
     const enemySprite = assets?.spriteForEnemy(enemy) ?? "rat";
-    drawCell(
-      ctx,
-      assets,
-      vp,
-      grid,
-      enemy.pos,
-      enemySprite,
-      enemy.state === "hunt" ? COLORS.enemyHunt : COLORS.enemyWander,
-      COLORS.enemyEdge,
-      {
-        elapsed: idleElapsed,
-        key: `${enemy.id}:${enemy.pos}`,
-        actorId: enemy.id,
-        frameElapsed: frame.elapsed,
-      },
-    );
-    drawEnemyHealthBar(
-      ctx,
-      assets,
-      vp,
-      grid,
-      enemy.pos,
-      enemy.hp,
-      enemy.maxHealth,
-      enemy.id,
-      enemySprite,
-      view.depth,
-    );
+    actors.push({
+      cell: enemy.pos,
+      sortY: actorSortY(assets, vp, grid, enemy.pos, enemySprite, enemy.id, 1, view.depth),
+      draw: () => drawCell(
+        ctx,
+        assets,
+        vp,
+        grid,
+        enemy.pos,
+        enemySprite,
+        enemy.state === "hunt" ? COLORS.enemyHunt : COLORS.enemyWander,
+        COLORS.enemyEdge,
+        {
+          elapsed: idleElapsed,
+          key: `${enemy.id}:${enemy.pos}`,
+          actorId: enemy.id,
+          frameElapsed: frame.elapsed,
+        },
+      ),
+    });
+    actorOverlays.push(() => drawEnemyHealthBar(
+        ctx,
+        assets,
+        vp,
+        grid,
+        enemy.pos,
+        enemy.hp,
+        enemy.maxHealth,
+        enemy.id,
+        enemySprite,
+        view.depth,
+      ));
   }
 
   for (const death of activeDeaths) {
     if (death.actorId === "hero" || !view.explored.has(death.cell)) continue;
     const sprite = spriteForDeathName(death.name);
-    drawCell(
+    actors.push({
+      cell: death.cell,
+      sortY: actorSortY(assets, vp, grid, death.cell, sprite, death.actorId, 1, view.depth),
+      draw: () => drawCell(
+        ctx,
+        assets,
+        vp,
+        grid,
+        death.cell,
+        sprite,
+        COLORS.enemyHunt,
+        COLORS.enemyEdge,
+        {
+          elapsed: 0,
+          key: `${death.actorId}:death`,
+          actorId: death.actorId,
+          frameElapsed: frame.elapsed,
+        },
+      ),
+    });
+  }
+
+  actors.push({
+    cell: view.heroPos,
+    sortY: actorSortY(assets, vp, grid, view.heroPos, view.hero.sprite, "hero", HERO_DRAW_SCALE, view.depth),
+    draw: () => drawCell(
       ctx,
       assets,
       vp,
       grid,
-      death.cell,
-      sprite,
-      COLORS.enemyHunt,
-      COLORS.enemyEdge,
+      view.heroPos,
+      view.hero.sprite,
+      COLORS.hero,
+      COLORS.heroEdge,
       {
-        elapsed: 0,
-        key: `${death.actorId}:death`,
-        actorId: death.actorId,
+        elapsed: idleElapsed,
+        key: `hero:${view.heroPos}`,
+        actorId: "hero",
         frameElapsed: frame.elapsed,
       },
-    );
-  }
+      view.depth,
+      HERO_DRAW_SCALE,
+    ),
+  });
 
-  drawCell(
-    ctx,
-    assets,
-    vp,
-    grid,
-    view.heroPos,
-    view.hero.sprite,
-    COLORS.hero,
-    COLORS.heroEdge,
-    {
-      elapsed: idleElapsed,
-      key: `hero:${view.heroPos}`,
-      actorId: "hero",
-      frameElapsed: frame.elapsed,
-    },
-    view.depth,
-    HERO_DRAW_SCALE,
-  );
+  actors.sort((a, b) => a.sortY - b.sortY || a.cell - b.cell);
+  for (const actor of actors) actor.draw();
+
+  drawWallOverlays(ctx, assets, wallOverlays, ts, view.depth);
+  for (const overlay of actorOverlays) overlay();
 
   drawDamagePopups(ctx, vp, grid, frame.elapsed, assets);
   drawItemPickupAnimations(ctx, vp, grid, frame, assets);
@@ -656,6 +685,23 @@ function drawGroundItem(
   ctx.restore();
 }
 
+function drawWallOverlays(
+  ctx: CanvasRenderingContext2D,
+  assets: SpriteSheetAssets | undefined,
+  overlays: readonly WallOverlayDraw[],
+  tileSize: number,
+  depth: number,
+): void {
+  if (!assets) return;
+  for (const overlay of overlays) {
+    drawTileIndex(ctx, assets, overlay.tileIndex, overlay.drawX, overlay.drawY, tileSize, 1, depth);
+    if (!overlay.visible) {
+      ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+      ctx.fillRect(overlay.drawX, overlay.drawY, tileSize, tileSize);
+    }
+  }
+}
+
 function drawCell(
   ctx: CanvasRenderingContext2D,
   assets: SpriteSheetAssets | undefined,
@@ -696,6 +742,23 @@ function drawCell(
   const fallbackSize = Math.min(size.width, size.height);
   if (edge) drawDisc(ctx, x + size.width / 2, y + size.height / 2, fallbackSize, fill, edge);
   else drawSquare(ctx, x, y, fallbackSize, fill);
+}
+
+function actorSortY(
+  assets: SpriteSheetAssets | undefined,
+  vp: VP,
+  grid: Grid,
+  cell: number,
+  sprite: SpriteKey,
+  actorId: string,
+  visualScale: number,
+  depth: number,
+): number {
+  const ts = vp.tileSize;
+  const visual = visualOffsetForActor(actorId, grid, ts);
+  const pixelY = vp.offsetY + grid.yOf(cell) * ts + visual.pixelOffsetY;
+  const size = actorSpriteSize(assets, sprite, ts, visualScale, depth);
+  return pixelY + ts - ts * ACTOR_PERSPECTIVE_RAISE - Math.max(1, Math.round(size.height * 0.03));
 }
 
 function actorSpriteSize(
