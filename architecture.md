@@ -788,3 +788,32 @@ present.
 Verified with `tsc --noEmit`, `git diff --check`, and a production build via
 `vite build --configLoader runner`; `dist/` contains the new assets and keeps
 the `/dungeon/` base path.
+
+### Phase 15.2 - Door State & SPD Wall Layering COMPLETE
+Fixed the thick-wall and sideway-door visual pass while keeping the grid and
+rules deterministic. The SPD reference uses calculated layering rather than a
+separate thin-wall asset: **`DungeonTerrainTilemap`** draws lower raised wall
+faces, while **`DungeonWallsTilemap`** draws internal wall and overhang sprites
+from `DungeonTileSheet.WALLS_INTERNAL` and `DungeonTileSheet.WALLS_OVERHANG`.
+**`AssetLoader`** ([src/render/AssetLoader.ts](src/render/AssetLoader.ts)) now
+maps those internal/overhang rows plus the correct SPD `DOOR_SIDEWAYS` overhang
+rectangle. **`MapScene`** ([src/render/MapScene.ts](src/render/MapScene.ts))
+uses neighboring terrain to choose lower wall fronts, internal walls,
+overhangs, and sideways doors in the same spirit as the Java tilemaps instead
+of painting every wall cell as a full bright block.
+
+Door state is now meaningful, not just cosmetic. **`GameWorld`**
+([src/core/game/GameWorld.ts](src/core/game/GameWorld.ts)) keeps open doors in
+`Level.openDoors`, opens a closed door when an actor enters it, and closes it
+again when the actor leaves unless something still occupies that door cell.
+`tryCloseDoor(...)` remains available for explicit adjacent-door closing. Hero
+FOV, enemy LOS, and line-of-fire treat closed doors as opaque by injecting
+door-aware transparency into the existing pure FOV/ray utilities. **`main.ts`**
+([src/main.ts](src/main.ts)) wires mobile close-door by tapping an adjacent open
+door and keyboard close-door with `C`.
+
+Added focused headless coverage in **`GameWorld.test`**
+([src/core/game/GameWorld.test.ts](src/core/game/GameWorld.test.ts)) for
+open-on-entry, close-on-leave, and explicit close. Verified with `tsc --noEmit`,
+`git diff --check`, and a production build via `vite build --configLoader
+runner`.

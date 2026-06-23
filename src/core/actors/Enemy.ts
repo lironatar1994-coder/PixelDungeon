@@ -34,6 +34,8 @@ export interface EnemySenses {
   heroPos(): number;
   /** True if another actor occupies the cell (so enemies don't overlap). */
   isOccupied(cell: number): boolean;
+  /** True if light can pass through the cell. */
+  isTransparent(cell: number): boolean;
   /** Resolve an attack from `attacker` against the hero (world authority). */
   attackHero(attacker: Enemy): void;
 }
@@ -92,6 +94,7 @@ export class Enemy extends Actor {
       this.pos,
       this.senses.heroPos(),
       this.def.vision,
+      (cell) => this.senses.isTransparent(cell),
     );
   }
 

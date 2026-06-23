@@ -38,6 +38,20 @@ const COLORS = {
 const IDLE_START_DELAY_SECONDS = 1.4;
 const STRIKE_DURATION_SECONDS = 0.15;
 const DAMAGE_POPUP_DURATION_SECONDS = 0.7;
+const TILE_SHEET_COLUMNS = 16;
+const RAISED_DOORS = sheetIndex(1, 8);
+const RAISED_DOOR = RAISED_DOORS;
+const RAISED_DOOR_OPEN = RAISED_DOORS + 1;
+const RAISED_DOOR_SIDEWAYS = RAISED_DOORS + 4;
+const RAISED_WALLS = sheetIndex(1, 6);
+const RAISED_WALL_DOOR = RAISED_WALLS + 8;
+const WALLS_INTERNAL = sheetIndex(1, 10);
+const WALLS_OVERHANG = sheetIndex(1, 13);
+const DOOR_SIDEWAYS_OVERHANG = WALLS_OVERHANG + 16;
+const DOOR_SIDEWAYS_OVERHANG_CLOSED = WALLS_OVERHANG + 20;
+const DOOR_OVERHANG = sheetIndex(1, 15);
+const DOOR_OVERHANG_OPEN = DOOR_OVERHANG + 1;
+const DOOR_SIDEWAYS = DOOR_OVERHANG + 3;
 let previousActivitySignature: string | null = null;
 let lastActivityAt = 0;
 
@@ -142,6 +156,7 @@ export function drawMapScene(
   const minY = Math.max(0, Math.floor(-vp.offsetY / ts) - 1);
   const maxX = Math.min(grid.width - 1, Math.ceil((frame.width - vp.offsetX) / ts) + 1);
   const maxY = Math.min(grid.height - 1, Math.ceil((frame.height - vp.offsetY) / ts) + 1);
+  const actorCells = new Set<number>([view.heroPos, ...view.enemies.map((enemy) => enemy.pos)]);
 
   for (let y = minY; y <= maxY; y++) {
     for (let x = minX; x <= maxX; x++) {
@@ -157,69 +172,72 @@ export function drawMapScene(
       ctx.fillRect(vp.offsetX + x * ts, vp.offsetY + y * ts, ts, ts);
 
       if (assets && terrain !== Terrain.EMPTY && explored) {
-        let spriteKey = assets.spriteForTerrain(terrain, view.depth);
+        const drawX = vp.offsetX + x * ts;
+        const drawY = vp.offsetY + y * ts;
+        ctx.fillStyle = COLORS.unseen;
+        ctx.fillRect(drawX, drawY, ts, ts);
+
+        let spriteKey: SpriteKey | null = assets.spriteForTerrain(terrain, view.depth);
+        let tileIndex: number | null = null;
+        let overhangIndex: number | null = null;
         if (terrain === Terrain.WALL) {
-          if (grid.inBounds(x, y + 1)) {
-            const southTerrain = grid.get(grid.cell(x, y + 1));
-            if (southTerrain === Terrain.WALL) spriteKey = "wallTop";
-            else spriteKey = wallFrontSprite(grid, x, y);
+          const southTerrain = terrainAt(grid, x, y + 1);
+          if (southTerrain === Terrain.DOOR) {
+            const southCell = grid.cell(x, y + 1);
+            spriteKey = null;
+            tileIndex = stitchRaisedWallTile(RAISED_WALL_DOOR, grid, x, y);
+            overhangIndex = view.openDoors.has(southCell) ? null : DOOR_SIDEWAYS;
+          } else if (southTerrain === Terrain.WALL) {
+            spriteKey = null;
+            tileIndex = stitchInternalWallTile(grid, x, y);
           } else {
             spriteKey = wallFrontSprite(grid, x, y);
           }
         } else if (terrain === Terrain.DOOR) {
-          const wTerrain = grid.inBounds(x - 1, y) ? grid.get(grid.cell(x - 1, y)) : null;
-          const eTerrain = grid.inBounds(x + 1, y) ? grid.get(grid.cell(x + 1, y)) : null;
-          const isHorizontalWall =
-            (wTerrain === Terrain.WALL || wTerrain === Terrain.DOOR) &&
-            (eTerrain === Terrain.WALL || eTerrain === Terrain.DOOR);
-          
           const isOpen = view.openDoors.has(cell);
-          const flatKey = isOpen ? "doorFlatOpen" : "doorFlat";
-
-          // Draw the flat floor/frame base layer first
-          const flatRect = assets.sourceRect(flatKey, view.depth);
-          const img = assets.imageFor(flatKey, view.depth);
-          if (img) {
-            ctx.drawImage(
-              img,
-              flatRect.x,
-              flatRect.y,
-              flatRect.w,
-              flatRect.h,
-              vp.offsetX + x * ts,
-              vp.offsetY + y * ts,
-              ts,
-              ts,
-            );
-          }
-          
-          // Now set the raised perspective sprite to be drawn on top
-          if (isHorizontalWall) {
-            spriteKey = isOpen ? "doorFrontOpen" : "doorFront";
-          } else {
-            spriteKey = "doorSide"; // Sideways door doesn't have a distinct "open" raised sprite
-          }
+          spriteKey = null;
+          tileIndex = isWallStitchable(grid, x, y - 1)
+            ? RAISED_DOOR_SIDEWAYS
+            : isOpen
+              ? RAISED_DOOR_OPEN
+              : RAISED_DOOR;
         } else if (terrain === Terrain.FLOOR) {
-          const variant = view.floorVariants.get(cell);
-          if (variant === 1) spriteKey = "floor1";
-          else if (variant === 2) spriteKey = "floor2";
+          spriteKey = floorSpriteForCell(view, cell);
         }
 
-        drawSprite(
-          ctx,
-          assets,
-          spriteKey,
-          vp.offsetX + x * ts,
-          vp.offsetY + y * ts,
-          ts,
-          1,
-          undefined,
-          view.depth,
-        );
+        if (!isWallStitchable(grid, x, y) && !actorCells.has(cell)) {
+          const southTerrain = terrainAt(grid, x, y + 1);
+          if (southTerrain === Terrain.WALL) {
+            overhangIndex = stitchWallOverhangTile(grid, x, y, view.openDoors.has(cell));
+          } else if (southTerrain === Terrain.DOOR) {
+            const doorCell = grid.cell(x, y + 1);
+            overhangIndex = view.openDoors.has(doorCell) ? DOOR_OVERHANG_OPEN : DOOR_OVERHANG;
+          }
+        }
+
+        if (tileIndex !== null) {
+          drawTileIndex(ctx, assets, tileIndex, drawX, drawY, ts, 1, view.depth);
+        } else if (spriteKey !== null) {
+          drawSprite(
+            ctx,
+            assets,
+            spriteKey,
+            drawX,
+            drawY,
+            ts,
+            1,
+            undefined,
+            view.depth,
+          );
+        }
+
+        if (overhangIndex !== null) {
+          drawTileIndex(ctx, assets, overhangIndex, drawX, drawY, ts, 1, view.depth);
+        }
 
         if (!visible) {
           ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
-          ctx.fillRect(vp.offsetX + x * ts, vp.offsetY + y * ts, ts, ts);
+          ctx.fillRect(drawX, drawY, ts, ts);
         }
       }
     }
@@ -294,6 +312,21 @@ export function drawMapScene(
 
 type VP = { tileSize: number; offsetX: number; offsetY: number };
 
+function sheetIndex(x: number, y: number): number {
+  return x - 1 + TILE_SHEET_COLUMNS * (y - 1);
+}
+
+function terrainAt(grid: Grid, x: number, y: number): Terrain | null {
+  return grid.inBounds(x, y) ? grid.get(grid.cell(x, y)) : null;
+}
+
+function floorSpriteForCell(view: MapView, cell: number): SpriteKey {
+  const variant = view.floorVariants.get(cell);
+  if (variant === 1) return "floor1";
+  if (variant === 2) return "floor2";
+  return "floor";
+}
+
 function wallFrontSprite(grid: Grid, x: number, y: number): SpriteKey {
   const rightOpen = !isWallStitchable(grid, x + 1, y);
   const leftOpen = !isWallStitchable(grid, x - 1, y);
@@ -306,7 +339,60 @@ function wallFrontSprite(grid: Grid, x: number, y: number): SpriteKey {
 function isWallStitchable(grid: Grid, x: number, y: number): boolean {
   if (!grid.inBounds(x, y)) return true;
   const terrain = grid.get(grid.cell(x, y));
-  return terrain === Terrain.WALL || terrain === Terrain.DOOR;
+  return terrain === Terrain.WALL;
+}
+
+function stitchRaisedWallTile(baseTile: number, grid: Grid, x: number, y: number): number {
+  let result = baseTile;
+  if (!isWallStitchable(grid, x + 1, y)) result += 1;
+  if (!isWallStitchable(grid, x - 1, y)) result += 2;
+  return result;
+}
+
+function stitchInternalWallTile(grid: Grid, x: number, y: number): number {
+  let result = WALLS_INTERNAL;
+  if (!isWallStitchable(grid, x + 1, y)) result += 1;
+  if (!isWallStitchable(grid, x + 1, y + 1)) result += 2;
+  if (!isWallStitchable(grid, x - 1, y + 1)) result += 4;
+  if (!isWallStitchable(grid, x - 1, y)) result += 8;
+  return result;
+}
+
+function stitchWallOverhangTile(grid: Grid, x: number, y: number, currentDoorOpen: boolean): number {
+  const currentTerrain = terrainAt(grid, x, y);
+  let result =
+    currentTerrain === Terrain.DOOR
+      ? currentDoorOpen
+        ? DOOR_SIDEWAYS_OVERHANG
+        : DOOR_SIDEWAYS_OVERHANG_CLOSED
+      : WALLS_OVERHANG;
+
+  if (!isWallStitchable(grid, x + 1, y + 1)) result += 1;
+  if (!isWallStitchable(grid, x - 1, y + 1)) result += 2;
+  return result;
+}
+
+function drawTileIndex(
+  ctx: CanvasRenderingContext2D,
+  assets: SpriteSheetAssets,
+  tileIndex: number,
+  x: number,
+  y: number,
+  size: number,
+  alpha: number,
+  depth: number,
+): boolean {
+  const image = assets.imageFor("floor", depth);
+  if (!image) return false;
+  const sourceX = (tileIndex % TILE_SHEET_COLUMNS) * 16;
+  const sourceY = Math.floor(tileIndex / TILE_SHEET_COLUMNS) * 16;
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(image, sourceX, sourceY, 16, 16, x, y, size, size);
+  ctx.restore();
+  return true;
 }
 
 function drawGroundItem(

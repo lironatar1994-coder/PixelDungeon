@@ -28,9 +28,14 @@ export class FieldOfView {
   }
 
   /** Recompute visibility from `origin`; fold newly seen cells into memory. */
-  update(grid: Grid, origin: number, radius: number): void {
+  update(
+    grid: Grid,
+    origin: number,
+    radius: number,
+    isOpaque?: (cell: number) => boolean,
+  ): void {
     this.visible.clear();
-    for (const cell of computeFOV(grid, origin, radius)) {
+    for (const cell of computeFOV(grid, origin, radius, isOpaque)) {
       this.visible.add(cell);
       this.explored.add(cell);
     }

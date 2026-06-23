@@ -40,6 +40,7 @@ function makeSenses(
     rng: new RNG("enemy-test"),
     heroPos: () => hero.pos,
     isOccupied: () => false,
+    isTransparent: (cell) => grid.isTransparent(cell),
     attackHero: () => {},
     ...overrides,
   };

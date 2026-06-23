@@ -530,6 +530,15 @@ async function boot(): Promise<void> {
       return;
     }
 
+    if (
+      cell !== null &&
+      current.isOpenDoor(cell) &&
+      current.grid.neighbours4(current.heroPos).includes(cell)
+    ) {
+      if (current.tryCloseDoor(cell)) playSfx("door");
+      return;
+    }
+
     // Decide what the tap means (pure), then execute via intents only.
     const plan = planTap(
       {
@@ -702,6 +711,9 @@ async function boot(): Promise<void> {
     } else if (e.key === "q") {
       e.preventDefault();
       if (world.quaffHealing()) playSfx("drink");
+    } else if (e.key === "c" || e.key === "C") {
+      e.preventDefault();
+      if (world.tryCloseDoor()) playSfx("door");
     }
   });
 
@@ -758,7 +770,9 @@ function describeLookCell(world: GameWorld, cell: number): string {
   }
 
   const terrain = world.grid.get(cell);
-  if (terrain === Terrain.DOOR) return "A dungeon door.";
+  if (terrain === Terrain.DOOR) {
+    return world.isOpenDoor(cell) ? "An open dungeon door." : "A closed dungeon door.";
+  }
   if (terrain === Terrain.WALL) return "A stone wall.";
   if (terrain === Terrain.FLOOR) return "A worn dungeon floor.";
   return "Darkness.";

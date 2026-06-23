@@ -124,6 +124,26 @@ describe("GameWorld", () => {
     expect(w.fov.isVisible(w.heroPos)).toBe(true);
   });
 
+  it("opens doors when entering them, closes on leave, and supports explicit close", () => {
+    const w = makeWorld("WORLD-DOOR", { enemyCount: 0 });
+    const start = w.heroPos;
+    const door = w.grid.neighbours4(start)[0]!;
+    w.grid.set(door, Terrain.DOOR);
+    w.level.openDoors.add(door);
+    expect(w.tryCloseDoor(door)).toBe(true);
+    expect(w.isOpenDoor(door)).toBe(false);
+
+    const dx = w.grid.xOf(door) - w.grid.xOf(start);
+    const dy = w.grid.yOf(door) - w.grid.yOf(start);
+    expect(w.tryMoveHero(dx, dy)).toBe(true);
+    expect(w.heroPos).toBe(door);
+    expect(w.isOpenDoor(door)).toBe(true);
+
+    expect(w.tryMoveHero(-dx, -dy)).toBe(true);
+    expect(w.heroPos).toBe(start);
+    expect(w.isOpenDoor(door)).toBe(false);
+  });
+
   it("is deterministic: same seed -> same hero & enemy placement", () => {
     const a = makeWorld("SAME");
     const b = makeWorld("SAME");

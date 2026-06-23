@@ -312,6 +312,7 @@ export class GameWorld {
       rng: this.enemyAiRng,
       heroPos: () => this.hero.pos,
       isOccupied: (cell) => this.isOccupied(cell),
+      isTransparent: (cell) => this.isCellTransparent(cell),
       attackHero: (enemy) => this.enemyAttackHero(enemy),
     };
   }
@@ -319,6 +320,20 @@ export class GameWorld {
   isOccupied(cell: number): boolean {
     if (this.hero.pos === cell) return true;
     return this.enemyList.some((e) => e.pos === cell);
+  }
+
+  isOpenDoor(cell: number): boolean {
+    return this.grid.inBoundsCell(cell) &&
+      this.grid.get(cell) === Terrain.DOOR &&
+      this.level.openDoors.has(cell);
+  }
+
+  private isCellTransparent(cell: number): boolean {
+    if (!this.grid.inBoundsCell(cell)) return false;
+    if (this.grid.get(cell) === Terrain.DOOR) {
+      return this.level.openDoors.has(cell);
+    }
+    return this.grid.isTransparent(cell);
   }
 
   private enemyAt(cell: number): Enemy | null {
@@ -510,7 +525,9 @@ export class GameWorld {
     }
 
     const path = lineOfFire(this.hero.pos, targetCell, this.grid, {
-      blocksCell: (cell) => cell !== targetCell && this.enemyAt(cell) !== null,
+      blocksCell: (cell) =>
+        cell !== targetCell &&
+        (this.enemyAt(cell) !== null || !this.isCellTransparent(cell)),
     });
     if (path.at(-1) !== targetCell) {
       this.pushLog("No clear shot.");
@@ -543,7 +560,24 @@ export class GameWorld {
     }
     if (!grid.isWalkable(target) || this.isOccupied(target)) return false;
 
+    if (grid.get(target) === Terrain.DOOR && !this.level.openDoors.has(target)) {
+      this.level.openDoors.add(target);
+      this.pushLog("You open the door.");
+    }
+
     this.hero.pending = { kind: "move", cell: target };
+    this.processTurns();
+    return true;
+  }
+
+  tryCloseDoor(cell?: number): boolean {
+    if (this.heroDead) return false;
+    const target = cell ?? this.firstAdjacentOpenDoor();
+    if (target === null || !this.canCloseDoor(target)) return false;
+
+    this.level.openDoors.delete(target);
+    this.pushLog("You close the door.");
+    this.hero.pending = { kind: "wait" };
     this.processTurns();
     return true;
   }
@@ -576,9 +610,6 @@ export class GameWorld {
     for (const actor of [this.hero, ...this.enemyList]) {
       if (grid.get(actor.pos) === Terrain.DOOR && !this.level.openDoors.has(actor.pos)) {
         this.level.openDoors.add(actor.pos);
-        if (actor === this.hero) {
-          this.pushLog("You open the door.");
-        }
       }
     }
 
@@ -587,6 +618,21 @@ export class GameWorld {
         this.level.openDoors.add(item.cell);
       }
     }
+  }
+
+  private firstAdjacentOpenDoor(): number | null {
+    return this.grid
+      .neighbours4(this.hero.pos)
+      .find((cell) => this.canCloseDoor(cell)) ?? null;
+  }
+
+  private canCloseDoor(cell: number): boolean {
+    if (!this.grid.inBoundsCell(cell)) return false;
+    if (this.grid.get(cell) !== Terrain.DOOR || !this.level.openDoors.has(cell)) {
+      return false;
+    }
+    if (this.isOccupied(cell) || this.level.itemAt(cell) !== null) return false;
+    return this.grid.neighbours4(this.hero.pos).includes(cell);
   }
 
   private pickUpHere(): void {
@@ -604,7 +650,12 @@ export class GameWorld {
   }
 
   recomputeFOV(): void {
-    this.fov.update(this.grid, this.hero.pos, this.visionRadius);
+    this.fov.update(
+      this.grid,
+      this.hero.pos,
+      this.visionRadius,
+      (cell) => !this.isCellTransparent(cell),
+    );
   }
 
   descend(): void {

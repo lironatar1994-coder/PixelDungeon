@@ -17,6 +17,7 @@ export function hasLineOfSight(
   from: number,
   to: number,
   maxRange: number,
+  isTransparent: (cell: number) => boolean = (cell) => grid.isTransparent(cell),
 ): boolean {
   const startX = grid.xOf(from);
   const startY = grid.yOf(from);
@@ -42,7 +43,7 @@ export function hasLineOfSight(
     // are allowed to be non-transparent themselves.
     const atStart = x0 === startX && y0 === startY;
     const atEnd = x0 === x1 && y0 === y1;
-    if (!atStart && !atEnd && !grid.isTransparent(grid.cell(x0, y0))) {
+    if (!atStart && !atEnd && !isTransparent(grid.cell(x0, y0))) {
       return false;
     }
     if (atEnd) return true;

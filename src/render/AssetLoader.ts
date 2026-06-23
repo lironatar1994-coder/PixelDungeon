@@ -29,7 +29,6 @@ export type SpriteKey =
   | "doorFlatOpen"
   | "doorFront"
   | "doorFrontOpen"
-  | "doorSide"
   | "hero"
   | "mageHero"
   | "rat"
@@ -130,7 +129,6 @@ const SPRITES: Record<SpriteKey, SpriteRect> = {
   doorFlatOpen: { sheet: "tiles", x: 144, y: 48, w: 16, h: 16 },
   doorFront: { sheet: "tiles", x: 0, y: 112, w: 16, h: 16 },
   doorFrontOpen: { sheet: "tiles", x: 16, y: 112, w: 16, h: 16 },
-  doorSide: { sheet: "tiles", x: 64, y: 112, w: 16, h: 16 },
 
   // HeroSprite.java / RatSprite.java / UndeadSprite.java idle frame zero.
   hero: { sheet: "warrior", x: 0, y: 0, w: 12, h: 15 },
@@ -257,8 +255,8 @@ function isTerrainSprite(key: SpriteKey): boolean {
   return key === "floor" || key === "floor1" || key === "floor2" || 
          key === "wallTop" || key === "wallFront" ||
          key === "wallFrontOpenRight" || key === "wallFrontOpenLeft" || key === "wallFrontOpenBoth" ||
-         key === "doorFlat" || key === "doorFlatOpen" || 
-         key === "doorFront" || key === "doorFrontOpen" || key === "doorSide" ||
+         key === "doorFlat" || key === "doorFlatOpen" ||
+         key === "doorFront" || key === "doorFrontOpen" ||
          key === "entrance" || key === "exit";
 }
 
