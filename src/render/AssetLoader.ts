@@ -22,6 +22,9 @@ export type SpriteKey =
   | "floor2"
   | "wallTop"
   | "wallFront"
+  | "wallFrontOpenRight"
+  | "wallFrontOpenLeft"
+  | "wallFrontOpenBoth"
   | "doorFlat"
   | "doorFlatOpen"
   | "doorFront"
@@ -32,6 +35,7 @@ export type SpriteKey =
   | "rat"
   | "zombie"
   | "heroPortrait"
+  | "magePortrait"
   | "entrance"
   | "exit"
   | "shortSword"
@@ -42,6 +46,7 @@ export type SpriteKey =
   | "ration"
   | "uiInventory"
   | "uiWait"
+  | "uiSearch"
   | "uiQuickslot"
   | "uiHeroStats"
   | "uiControls";
@@ -118,6 +123,9 @@ const SPRITES: Record<SpriteKey, SpriteRect> = {
   // Walls & Doors (explicit coordinates)
   wallTop: { sheet: "tiles", x: 0, y: 48, w: 16, h: 16 },
   wallFront: { sheet: "tiles", x: 0, y: 80, w: 16, h: 16 },
+  wallFrontOpenRight: { sheet: "tiles", x: 16, y: 80, w: 16, h: 16 },
+  wallFrontOpenLeft: { sheet: "tiles", x: 32, y: 80, w: 16, h: 16 },
+  wallFrontOpenBoth: { sheet: "tiles", x: 48, y: 80, w: 16, h: 16 },
   doorFlat: { sheet: "tiles", x: 128, y: 48, w: 16, h: 16 },
   doorFlatOpen: { sheet: "tiles", x: 144, y: 48, w: 16, h: 16 },
   doorFront: { sheet: "tiles", x: 0, y: 112, w: 16, h: 16 },
@@ -129,6 +137,7 @@ const SPRITES: Record<SpriteKey, SpriteRect> = {
   mageHero: { sheet: "mage", x: 0, y: 0, w: 12, h: 15 },
   // HeroSprite.avatar(...) crops the class sheet at x=1,y=0,w=12,h=15 for the base portrait.
   heroPortrait: { sheet: "warrior", x: 1, y: 0, w: 12, h: 15 },
+  magePortrait: { sheet: "mage", x: 1, y: 0, w: 12, h: 15 },
   rat: { sheet: "rat", x: 0, y: 0, w: 16, h: 15 },
   zombie: { sheet: "undead", x: 0, y: 0, w: 12, h: 16 },
 
@@ -145,6 +154,8 @@ const SPRITES: Record<SpriteKey, SpriteRect> = {
   // Toolbar.java: btnInventory.icon(160,0,16,16), btnWait.icon(176,0,16,16).
   uiInventory: { sheet: "toolbar", x: 160, y: 0, w: 16, h: 16 },
   uiWait: { sheet: "toolbar", x: 176, y: 0, w: 16, h: 16 },
+  // Toolbar.java: btnSearch.icon(192,0,16,16).
+  uiSearch: { sheet: "toolbar", x: 192, y: 0, w: 16, h: 16 },
   // Toolbar.java quickslot frame: left slot frame(86,0,20,24); item assignment arrives later.
   uiQuickslot: { sheet: "toolbar", x: 86, y: 0, w: 20, h: 24 },
 
@@ -245,6 +256,7 @@ export class AssetLoader implements SpriteSheetAssets {
 function isTerrainSprite(key: SpriteKey): boolean {
   return key === "floor" || key === "floor1" || key === "floor2" || 
          key === "wallTop" || key === "wallFront" ||
+         key === "wallFrontOpenRight" || key === "wallFrontOpenLeft" || key === "wallFrontOpenBoth" ||
          key === "doorFlat" || key === "doorFlatOpen" || 
          key === "doorFront" || key === "doorFrontOpen" || key === "doorSide" ||
          key === "entrance" || key === "exit";

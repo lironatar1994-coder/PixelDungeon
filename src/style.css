@@ -9,6 +9,7 @@
   --spd-button-frame: url("../public/assets/chrome_button_toast.png");
   --spd-button-frame-grey: url("../public/assets/chrome_button_grey.png");
   --spd-button-frame-red: url("../public/assets/chrome_button_red.png");
+  --spd-status-pane: url("../public/assets/status_pane.png");
   --action-size: 56px;
   --action-gap: 8px;
 }
@@ -242,13 +243,21 @@ body {
   position: absolute;
   top: max(10px, env(safe-area-inset-top));
   left: max(10px, env(safe-area-inset-left));
-  width: min(210px, calc(100vw - 132px));
+  width: min(238px, calc(100vw - 132px));
   max-width: calc(100vw - 20px);
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 7px 8px;
+  gap: 7px;
+  padding: 7px 10px 8px 7px;
   box-shadow: 0 12px 34px rgba(0, 0, 0, 0.34);
+}
+
+.ui-hud.ui-panel {
+  border: 0;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 42%),
+    var(--spd-status-pane);
+  background-size: 100% 100%;
 }
 
 .ui-panel {
@@ -259,7 +268,7 @@ body {
 }
 
 .hud-portrait {
-  width: 46px;
+  width: 50px;
   height: 50px;
   flex: 0 0 auto;
   display: grid;
@@ -270,6 +279,21 @@ body {
     repeating-linear-gradient(135deg, rgba(244, 211, 138, 0.08) 0 1px, transparent 1px 8px);
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.7);
   overflow: hidden;
+}
+
+.hud-level-badge {
+  position: absolute;
+  left: 52px;
+  bottom: -4px;
+  min-width: 24px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border: 8px solid transparent;
+  border-image: var(--spd-button-frame-grey) 2 fill / 8px / 0 stretch;
+  color: #fff1b7;
+  font-size: 13px;
+  line-height: 1;
 }
 
 .hud-portrait-sprite,
@@ -284,16 +308,16 @@ body {
   min-width: 0;
   flex: 1;
   display: grid;
-  gap: 8px;
+  gap: 5px;
 }
 
 .depth-pill {
   width: fit-content;
-  padding: 2px 6px;
+  padding: 0;
   border: 0;
-  color: #f4d38a;
+  color: #ffe8a3;
   background: transparent;
-  font-size: 11px;
+  font-size: 12px;
   text-transform: uppercase;
 }
 
@@ -306,7 +330,8 @@ body {
 }
 
 .hp-track {
-  height: 14px;
+  position: relative;
+  height: 15px;
   overflow: hidden;
   border: 4px solid transparent;
   border-image: var(--spd-button-frame-red) 2 fill / 4px / 0 stretch;
@@ -316,11 +341,49 @@ body {
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.75);
 }
 
+.exp-track {
+  position: relative;
+  height: 8px;
+  overflow: hidden;
+  border: 3px solid transparent;
+  border-image: var(--spd-button-frame-grey) 2 fill / 3px / 0 stretch;
+  background: #191c1c;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.75);
+}
+
 .hp-fill {
   height: 100%;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.24), transparent 46%),
     linear-gradient(90deg, #3db56f, #d8bf43 72%, #cc5b4d);
+}
+
+.exp-fill {
+  height: 100%;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.2), transparent 44%),
+    #c58d2e;
+}
+
+.hp-text,
+.exp-text {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #f8edcb;
+  pointer-events: none;
+}
+
+.hp-text {
+  font-size: 10px;
+  line-height: 1;
+}
+
+.exp-text {
+  font-size: 8px;
+  line-height: 1;
+  color: #fff1b7;
 }
 
 .command-button,
@@ -413,7 +476,7 @@ body {
   gap: var(--action-gap);
   box-sizing: border-box;
   padding: 4px max(8px, env(safe-area-inset-right)) calc(4px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
-  background: linear-gradient(180deg, rgba(7, 9, 10, 0), rgba(7, 9, 10, 0.52) 58%, rgba(7, 9, 10, 0.78));
+  background: linear-gradient(180deg, rgba(7, 9, 10, 0), rgba(7, 9, 10, 0.42) 58%, rgba(7, 9, 10, 0.72));
 }
 
 .action-group {
@@ -823,7 +886,7 @@ body {
   }
 
   .ui-hud {
-    width: min(188px, calc(100vw - 112px));
+    width: min(214px, calc(100vw - 112px));
     gap: 7px;
     padding: 6px 7px;
   }
@@ -880,8 +943,8 @@ body {
   .ui-hud {
     top: max(6px, env(safe-area-inset-top));
     left: max(6px, env(safe-area-inset-left));
-    width: min(176px, calc(100vw - 100px));
-    min-width: 146px;
+    width: min(196px, calc(100vw - 100px));
+    min-width: 164px;
     gap: 5px;
     padding: 5px 6px;
   }
@@ -906,6 +969,18 @@ body {
 
   .hp-track {
     height: 11px;
+  }
+
+  .exp-track {
+    height: 7px;
+  }
+
+  .hud-level-badge {
+    left: 43px;
+    bottom: -5px;
+    min-width: 21px;
+    height: 23px;
+    font-size: 11px;
   }
 
   .utility-bar {

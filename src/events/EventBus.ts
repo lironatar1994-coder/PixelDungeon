@@ -45,6 +45,8 @@ export interface GameEvents {
   "hero:damaged": { amount: number; source: string; hp: number };
   /** UI command shell for future quickslot assignment/use behavior. */
   "ui:quickslot": {};
+  /** UI command for SPD-style examine/select mode. */
+  "ui:look": {};
   /** Browser-only sound cue requested by UI/orchestrator glue. */
   "audio:sfx": {
     cue:

@@ -159,18 +159,17 @@ export function drawMapScene(
       if (assets && terrain !== Terrain.EMPTY && explored) {
         let spriteKey = assets.spriteForTerrain(terrain, view.depth);
         if (terrain === Terrain.WALL) {
-          const southCell = grid.cell(x, y + 1);
           if (grid.inBounds(x, y + 1)) {
-            const southTerrain = grid.get(southCell);
+            const southTerrain = grid.get(grid.cell(x, y + 1));
             if (southTerrain === Terrain.WALL) spriteKey = "wallTop";
-            else spriteKey = "wallFront";
+            else spriteKey = wallFrontSprite(grid, x, y);
           } else {
-            spriteKey = "wallFront";
+            spriteKey = wallFrontSprite(grid, x, y);
           }
         } else if (terrain === Terrain.DOOR) {
           const wTerrain = grid.inBounds(x - 1, y) ? grid.get(grid.cell(x - 1, y)) : null;
           const eTerrain = grid.inBounds(x + 1, y) ? grid.get(grid.cell(x + 1, y)) : null;
-          const isHorizontalWall = 
+          const isHorizontalWall =
             (wTerrain === Terrain.WALL || wTerrain === Terrain.DOOR) &&
             (eTerrain === Terrain.WALL || eTerrain === Terrain.DOOR);
           
@@ -180,8 +179,18 @@ export function drawMapScene(
           // Draw the flat floor/frame base layer first
           const flatRect = assets.sourceRect(flatKey, view.depth);
           const img = assets.imageFor(flatKey, view.depth);
-          if (img && flatRect) {
-            ctx.drawImage(img, flatRect.x, flatRect.y, flatRect.w, flatRect.h, vp.offsetX + x * ts, vp.offsetY + y * ts, ts, ts);
+          if (img) {
+            ctx.drawImage(
+              img,
+              flatRect.x,
+              flatRect.y,
+              flatRect.w,
+              flatRect.h,
+              vp.offsetX + x * ts,
+              vp.offsetY + y * ts,
+              ts,
+              ts,
+            );
           }
           
           // Now set the raised perspective sprite to be drawn on top
@@ -216,7 +225,7 @@ export function drawMapScene(
     }
   }
 
-  if (ts >= 8) {
+  if (ts >= 8 && !assets?.ready) {
     ctx.strokeStyle = COLORS.gridLine;
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -284,6 +293,21 @@ export function drawMapScene(
 }
 
 type VP = { tileSize: number; offsetX: number; offsetY: number };
+
+function wallFrontSprite(grid: Grid, x: number, y: number): SpriteKey {
+  const rightOpen = !isWallStitchable(grid, x + 1, y);
+  const leftOpen = !isWallStitchable(grid, x - 1, y);
+  if (rightOpen && leftOpen) return "wallFrontOpenBoth";
+  if (rightOpen) return "wallFrontOpenRight";
+  if (leftOpen) return "wallFrontOpenLeft";
+  return "wallFront";
+}
+
+function isWallStitchable(grid: Grid, x: number, y: number): boolean {
+  if (!grid.inBounds(x, y)) return true;
+  const terrain = grid.get(grid.cell(x, y));
+  return terrain === Terrain.WALL || terrain === Terrain.DOOR;
+}
 
 function drawGroundItem(
   ctx: CanvasRenderingContext2D,

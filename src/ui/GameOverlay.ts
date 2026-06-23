@@ -20,6 +20,7 @@ export interface OverlayState {
     maxExperience: number;
     weaponName: string;
     armorName: string;
+    sprite: SpriteKey;
     alive: boolean;
   };
   inventory: {
@@ -37,6 +38,7 @@ export interface OverlayActions {
   drop(itemId: string): boolean;
   wait(): boolean;
   quickslot(): void;
+  look(): void;
   restart(): void;
 }
 
@@ -166,13 +168,20 @@ export class GameOverlay {
 
   private renderHud(state: OverlayState): void {
     const hpPct = state.hero.maxHealth > 0 ? Math.max(0, state.hero.hp / state.hero.maxHealth) : 0;
+    const expPct = state.hero.maxExperience > 0
+      ? Math.max(0, Math.min(1, state.hero.experience / state.hero.maxExperience))
+      : 0;
     this.hud.replaceChildren();
+
+    const level = document.createElement("div");
+    level.className = "hud-level-badge";
+    level.textContent = String(state.hero.level);
 
     const portrait = document.createElement("div");
     portrait.className = "hud-portrait";
     const portraitSprite = document.createElement("span");
     portraitSprite.className = "hud-portrait-sprite";
-    const portraitStyle = this.assets?.cssStyleForSprite("heroPortrait", 3);
+    const portraitStyle = this.assets?.cssStyleForSprite(portraitForHero(state.hero.sprite), 3);
     if (portraitStyle) {
       Object.assign(portraitSprite.style, portraitStyle);
     } else {
@@ -189,10 +198,21 @@ export class GameOverlay {
     const hp = document.createElement("div");
     hp.className = "hp-track";
     hp.setAttribute("aria-label", `Health ${state.hero.hp} of ${state.hero.maxHealth}`);
-    hp.innerHTML = `<div class="hp-fill" style="width:${Math.round(hpPct * 100)}%"></div>`;
+    hp.innerHTML = `
+      <div class="hp-fill" style="width:${Math.round(hpPct * 100)}%"></div>
+      <span class="hp-text">${state.hero.hp}/${state.hero.maxHealth}</span>
+    `;
 
-    vitals.append(depth, hp);
-    this.hud.append(portrait, vitals);
+    const exp = document.createElement("div");
+    exp.className = "exp-track";
+    exp.setAttribute("aria-label", `Experience ${state.hero.experience} of ${state.hero.maxExperience}`);
+    exp.innerHTML = `
+      <div class="exp-fill" style="width:${Math.round(expPct * 100)}%"></div>
+      <span class="exp-text">${state.hero.experience}/${state.hero.maxExperience}</span>
+    `;
+
+    vitals.append(depth, hp, exp);
+    this.hud.append(portrait, level, vitals);
   }
 
   private renderActionBar(): void {
@@ -204,6 +224,7 @@ export class GameOverlay {
     right.className = "action-group action-group-right";
     right.append(
       this.actionButton("Quickslot", "uiQuickslot", () => this.toggleQuickslot()),
+      this.actionButton("Look", "uiSearch", () => this.actions.look()),
       this.actionButton("Inventory", "uiInventory", () => this.toggleInventory()),
     );
 
@@ -583,4 +604,8 @@ function itemDescription(item: ItemDef): string {
   if (item.type === "potion") return `Heals ${item.heal ?? 0}`;
   if (item.type === "food") return "Ration";
   return "Miscellaneous";
+}
+
+function portraitForHero(sprite: SpriteKey): SpriteKey {
+  return sprite === "mageHero" ? "magePortrait" : "heroPortrait";
 }

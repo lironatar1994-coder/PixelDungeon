@@ -39,6 +39,7 @@ import { loadContentDatabase } from "@/core/data/loadContent";
 import { SaveManager } from "@/core/save/SaveManager";
 import { HistoryManager } from "@/core/save/HistoryManager";
 import { findPath } from "@/core/pathfinding/AStar";
+import { Terrain } from "@/core/grid/terrain";
 import { planTap } from "@/input/tapPlan";
 import { InputManager } from "@/input/InputManager";
 import { rectLayer } from "@/input/PointerRouter";
@@ -46,7 +47,7 @@ import { GameOverlay, type OverlayState } from "@/ui/GameOverlay";
 import { MainMenu } from "@/ui/MainMenu";
 
 type AppState = "MainMenu" | "Playing";
-type TargetingMode = "ranged";
+type TargetingMode = "ranged" | "look";
 const AUTO_WALK_STEP_SECONDS = 0.08;
 const WHEEL_ZOOM_STEP = 0.0015;
 const PINCH_ZOOM_SENSITIVITY = 1;
@@ -185,6 +186,7 @@ async function boot(): Promise<void> {
         maxExperience: current.heroMaxExperience,
         weaponName: current.inventory.equippedIn("weapon")?.name ?? "Unarmed",
         armorName: current.inventory.equippedIn("armor")?.name ?? "Unarmored",
+        sprite: heroSpriteKey(current.heroSprite),
         alive: current.heroAlive,
       },
       inventory: {
@@ -247,6 +249,10 @@ async function boot(): Promise<void> {
         quickslot: () => {
           playSfx("ui_click");
           bus.emit("ui:quickslot", {});
+        },
+        look: () => {
+          playSfx("ui_click");
+          bus.emit("ui:look", {});
         },
         restart: restartRun,
       },
@@ -403,7 +409,7 @@ async function boot(): Promise<void> {
     cancelAutoWalk();
     targetingMode = mode;
     selectedCell = null;
-    bus.emit("combat:log", { line: "Select a target." });
+    bus.emit("combat:log", { line: mode === "look" ? "Select a cell." : "Select a target." });
   }
 
   /** Begin approaching a targeted enemy; the per-step logic stops adjacent. */
@@ -512,6 +518,9 @@ async function boot(): Promise<void> {
       targetingMode = null;
       if (cell !== null && mode === "ranged") {
         current.rangedAttack(cell);
+      } else if (cell !== null && mode === "look") {
+        selectedCell = cell;
+        bus.emit("combat:log", { line: describeLookCell(current, cell) });
       }
       return;
     }
@@ -626,6 +635,10 @@ async function boot(): Promise<void> {
     startTargetingMode("ranged");
   });
 
+  bus.on("ui:look", () => {
+    startTargetingMode("look");
+  });
+
   bus.on("combat:strike", (event) => {
     queueCombatStrikeAnimation(event);
   });
@@ -731,6 +744,24 @@ function touchDistance(a: Touch, b: Touch): number {
 function heroSpriteKey(sprite: string): SpriteKey {
   if (sprite === "mage") return "mageHero";
   return "hero";
+}
+
+function describeLookCell(world: GameWorld, cell: number): string {
+  const enemy = world.enemies.find((candidate) => candidate.pos === cell);
+  if (enemy && world.fov.visible.has(cell)) {
+    return `${enemy.name}: ${enemy.hp}/${enemy.maxHealth} HP.`;
+  }
+
+  const item = world.level.groundItems.find((ground) => ground.cell === cell);
+  if (item && world.fov.visible.has(cell)) {
+    return `You see ${item.itemId.replaceAll("_", " ")}.`;
+  }
+
+  const terrain = world.grid.get(cell);
+  if (terrain === Terrain.DOOR) return "A dungeon door.";
+  if (terrain === Terrain.WALL) return "A stone wall.";
+  if (terrain === Terrain.FLOOR) return "A worn dungeon floor.";
+  return "Darkness.";
 }
 
 void boot();

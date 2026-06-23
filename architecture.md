@@ -762,3 +762,29 @@ stairs, and restart, while `AudioManager` listens directly to `combat:strike`,
 Verified with `tsc --noEmit`. Production build uses Vite's runner config loader
 inside this sandbox because the default esbuild config bundler cannot read the
 parent directory; the generated `dist/` is still based at `/dungeon/`.
+
+### Phase 15.1 - SPD HUD & Terrain Polish COMPLETE
+Tightened the render/UI layer toward the original Shattered Pixel Dungeon
+screenshots without touching deterministic gameplay math. **`AssetLoader`**
+([src/render/AssetLoader.ts](src/render/AssetLoader.ts)) now maps the toolbar
+Search/Examine icon from `toolbar.png`, a Mage portrait crop, and the raised
+wall-front open-left/open-right/open-both variants from
+`DungeonTileSheet.RAISED_WALL + 1/2/3`. **`MapScene`**
+([src/render/MapScene.ts](src/render/MapScene.ts)) chooses contextual wall
+fronts and raised/sideway door sprites from neighboring terrain, and suppresses
+the artificial debug grid whenever sprite assets are available.
+
+**`GameOverlay`** ([src/ui/GameOverlay.ts](src/ui/GameOverlay.ts)) now renders a
+more SPD-like status pane using `status_pane.png`: class-correct portrait,
+level badge, HP text/bar, EXP text/bar, and the depth label. The bottom action
+bar now includes a Search/Look button next to Quickslot and Inventory.
+**`main.ts`** ([src/main.ts](src/main.ts)) handles that via a `ui:look` EventBus
+intent and a read-only targeting mode that reports visible enemies, ground
+items, or terrain to the combat log without spending a turn or mutating core
+state. The remaining sewer music files (`sewers_2.ogg`, `sewers_3.ogg`) were
+copied into `public/assets/` so the full requested curated asset list is now
+present.
+
+Verified with `tsc --noEmit`, `git diff --check`, and a production build via
+`vite build --configLoader runner`; `dist/` contains the new assets and keeps
+the `/dungeon/` base path.
