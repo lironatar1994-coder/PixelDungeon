@@ -23,6 +23,7 @@ import {
   drawMapScene,
   queueActorMoveAnimation,
   queueCombatStrikeAnimation,
+  queueItemPickupAnimation,
   snapMapCameraToHero,
   type MapView,
 } from "@/render/MapScene";
@@ -36,7 +37,9 @@ import {
   GameWorld,
   type ActorMoveInfo,
   type CombatStrikeInfo,
+  type HeroLevelUpInfo,
   type HeroDamagedInfo,
+  type ItemPickupInfo,
 } from "@/core/game/GameWorld";
 import type { Enemy } from "@/core/actors/Enemy";
 import { loadContentDatabase } from "@/core/data/loadContent";
@@ -123,6 +126,8 @@ async function boot(): Promise<void> {
   const emitHeroDamaged = (info: HeroDamagedInfo) => bus.emit("hero:damaged", info);
   const emitCombatStrike = (info: CombatStrikeInfo) => bus.emit("combat:strike", info);
   const emitActorMove = (info: ActorMoveInfo) => bus.emit("actor:move", info);
+  const emitItemPickup = (info: ItemPickupInfo) => bus.emit("item:pickup", info);
+  const emitHeroLevelUp = (info: HeroLevelUpInfo) => bus.emit("hero:levelup", info);
   // One shared callback set so every GameWorld (new / loaded / restarted) is
   // wired to the same EventBus bridges.
   const worldCallbacks = {
@@ -131,6 +136,8 @@ async function boot(): Promise<void> {
     onHeroDamaged: emitHeroDamaged,
     onCombatStrike: emitCombatStrike,
     onActorMove: emitActorMove,
+    onItemPickup: emitItemPickup,
+    onHeroLevelUp: emitHeroLevelUp,
   };
 
   let appState: AppState = "MainMenu";
@@ -269,7 +276,7 @@ async function boot(): Promise<void> {
       {
         equip: (itemId) => {
           const ok = requireWorld(world).equipItem(itemId);
-          if (ok) playSfx("ui_click");
+          if (ok) playSfx("equip");
           return ok;
         },
         consume: (itemId) => {
@@ -281,7 +288,7 @@ async function boot(): Promise<void> {
         },
         drop: (itemId) => {
           const ok = requireWorld(world).dropItem(itemId);
-          if (ok) playSfx("ui_click");
+          if (ok) playSfx("drop");
           return ok;
         },
         wait: () => {
@@ -858,6 +865,10 @@ async function boot(): Promise<void> {
 
   bus.on("actor:move", (event) => {
     queueActorMoveAnimation(event);
+  });
+
+  bus.on("item:pickup", (event) => {
+    queueItemPickupAnimation(event);
   });
 
   bus.on("loop:frame", ({ dt }) => {

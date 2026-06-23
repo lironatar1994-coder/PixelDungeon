@@ -43,6 +43,10 @@ export interface GameEvents {
   };
   /** An actor's core grid cell changed instantly; render may animate it. */
   "actor:move": { actorId: string; fromCell: number; toCell: number };
+  /** An item was picked up from a dungeon cell; render may fly it to the UI. */
+  "item:pickup": { itemId: string; cell: number };
+  /** The hero gained at least one level. */
+  "hero:levelup": { level: number };
   /** The hero just lost hit points (e.g. a monster landed a blow). */
   "hero:damaged": { amount: number; source: string; hp: number };
   /** UI command shell for future quickslot assignment/use behavior. */
@@ -54,14 +58,34 @@ export interface GameEvents {
     cue:
       | "ui_click"
       | "hit"
+      | "hit_slash"
+      | "hit_stab"
+      | "hit_crush"
+      | "hit_strong"
       | "miss"
       | "death"
       | "drink"
       | "eat"
       | "descend"
       | "door"
+      | "equip"
+      | "drop"
       | "pickup"
       | "step"
+      | "unlock"
+      | "gold"
+      | "secret"
+      | "trap"
+      | "shatter"
+      | "zap"
+      | "read"
+      | "badge"
+      | "dewdrop"
+      | "water"
+      | "grass"
+      | "trample"
+      | "alert"
+      | "puff"
       | "health_warn"
       | "health_critical"
       | "levelup";

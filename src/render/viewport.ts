@@ -29,6 +29,10 @@ export interface CameraPan {
   y: number;
 }
 
+export interface CameraViewportOptions {
+  allowOutOfBounds?: boolean;
+}
+
 /**
  * Create a hero-centered camera. Offsets are clamped so map edges do not drift
  * away from the viewport when the hero is near a boundary.
@@ -40,11 +44,20 @@ export function computeCameraViewport(
   focusCell: number,
   zoomMultiplier = 1,
   pan: CameraPan = { x: 0, y: 0 },
+  opts: CameraViewportOptions = {},
 ): Viewport {
   const metrics = cameraMetrics(viewW, viewH, grid, focusCell, zoomMultiplier);
-  const clampedPan = clampPan(metrics, viewW, viewH, pan);
-  const offsetX = clampOffset(metrics.idealX + clampedPan.x, viewW, metrics.mapW);
-  const offsetY = clampOffset(metrics.idealY + clampedPan.y, viewH, metrics.mapH);
+  const appliedPan = opts.allowOutOfBounds
+    ? finitePan(pan)
+    : clampPan(metrics, viewW, viewH, pan);
+  const rawOffsetX = metrics.idealX + appliedPan.x;
+  const rawOffsetY = metrics.idealY + appliedPan.y;
+  const offsetX = opts.allowOutOfBounds
+    ? rawOffsetX
+    : clampOffset(rawOffsetX, viewW, metrics.mapW);
+  const offsetY = opts.allowOutOfBounds
+    ? rawOffsetY
+    : clampOffset(rawOffsetY, viewH, metrics.mapH);
 
   return { tileSize: metrics.tileSize, offsetX, offsetY, scale: metrics.scale };
 }
@@ -124,6 +137,13 @@ function clampPan(
   return {
     x: clampPanAxis(pan.x, metrics.idealX, viewW, metrics.mapW),
     y: clampPanAxis(pan.y, metrics.idealY, viewH, metrics.mapH),
+  };
+}
+
+function finitePan(pan: CameraPan): CameraPan {
+  return {
+    x: Number.isFinite(pan.x) ? Math.round(pan.x) : 0,
+    y: Number.isFinite(pan.y) ? Math.round(pan.y) : 0,
   };
 }
 

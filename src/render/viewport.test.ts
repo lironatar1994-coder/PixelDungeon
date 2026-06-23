@@ -85,4 +85,25 @@ describe("camera viewport", () => {
     expect(pixelToCell(vp, grid, px, py)).toBe(target);
     expect(pixelToCell(vp, grid, 400, 300)).not.toBe(focus);
   });
+
+  it("can explicitly allow detached camera pan beyond map boundaries", () => {
+    const grid = new Grid(60, 60);
+    const focus = grid.cell(0, 0);
+    const clamped = computeCameraViewport(800, 600, grid, focus, 1, { x: 500, y: 500 });
+    const detached = computeCameraViewport(
+      800,
+      600,
+      grid,
+      focus,
+      1,
+      { x: 500, y: 500 },
+      { allowOutOfBounds: true },
+    );
+
+    expect(clamped.offsetX).toBeLessThanOrEqual(0);
+    expect(clamped.offsetY).toBeLessThanOrEqual(0);
+    expect(detached.offsetX).toBeGreaterThan(0);
+    expect(detached.offsetY).toBeGreaterThan(0);
+    expect(pixelToCell(detached, grid, 0, 0)).toBeNull();
+  });
 });

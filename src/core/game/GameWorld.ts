@@ -59,6 +59,15 @@ export interface ActorMoveInfo {
   toCell: number;
 }
 
+export interface ItemPickupInfo {
+  itemId: string;
+  cell: number;
+}
+
+export interface HeroLevelUpInfo {
+  level: number;
+}
+
 export interface WorldOptions {
   /** How far the hero can see (the player's fog radius — not enemy content). */
   visionRadius?: number;
@@ -75,6 +84,10 @@ export interface WorldOptions {
   onCombatStrike?: (info: CombatStrikeInfo) => void;
   /** Fired after an actor's core grid position changes; render may tween it. */
   onActorMove?: (info: ActorMoveInfo) => void;
+  /** Fired after an item is removed from the floor and added to inventory. */
+  onItemPickup?: (info: ItemPickupInfo) => void;
+  /** Fired after the hero gains one or more levels. */
+  onHeroLevelUp?: (info: HeroLevelUpInfo) => void;
 }
 
 export interface EnemySnapshot {
@@ -139,6 +152,8 @@ export class GameWorld {
   private readonly onHeroDamaged?: (info: HeroDamagedInfo) => void;
   private readonly onCombatStrike?: (info: CombatStrikeInfo) => void;
   private readonly onActorMove?: (info: ActorMoveInfo) => void;
+  private readonly onItemPickup?: (info: ItemPickupInfo) => void;
+  private readonly onHeroLevelUp?: (info: HeroLevelUpInfo) => void;
   private enemyAiRng = new RNG(0);
 
   private queue = new TurnQueue();
@@ -160,6 +175,8 @@ export class GameWorld {
     this.onHeroDamaged = opts.onHeroDamaged;
     this.onCombatStrike = opts.onCombatStrike;
     this.onActorMove = opts.onActorMove;
+    this.onItemPickup = opts.onItemPickup;
+    this.onHeroLevelUp = opts.onHeroLevelUp;
 
     this.createHero(); // the hero persists across floors
     this.enterFloor();
@@ -168,7 +185,7 @@ export class GameWorld {
   static fromSnapshot(
     snapshot: GameWorldSnapshot,
     content: ContentDatabaseType,
-    opts: Pick<WorldOptions, "onChange" | "onLog" | "onHeroDamaged" | "onCombatStrike" | "onActorMove"> = {},
+    opts: Pick<WorldOptions, "onChange" | "onLog" | "onHeroDamaged" | "onCombatStrike" | "onActorMove" | "onItemPickup" | "onHeroLevelUp"> = {},
   ): GameWorld {
     const world = new GameWorld(snapshot.seed, content, {
       visionRadius: snapshot.visionRadius,
@@ -179,6 +196,8 @@ export class GameWorld {
       onHeroDamaged: opts.onHeroDamaged,
       onCombatStrike: opts.onCombatStrike,
       onActorMove: opts.onActorMove,
+      onItemPickup: opts.onItemPickup,
+      onHeroLevelUp: opts.onHeroLevelUp,
     });
     world.restore(snapshot);
     return world;
@@ -399,6 +418,7 @@ export class GameWorld {
           this.pushLog(`You gain ${progress.gained} experience.`);
           if (progress.levelsGained > 0) {
             this.pushLog(`You are now level ${this.hero.level}!`);
+            this.onHeroLevelUp?.({ level: this.hero.level });
           }
         }
       }
@@ -695,6 +715,7 @@ export class GameWorld {
       this.level.placeGroundItem(this.hero.pos, removed);
       return;
     }
+    this.onItemPickup?.({ itemId: item.id, cell: this.hero.pos });
     this.pushLog(`You pick up ${item.name}.`);
   }
 

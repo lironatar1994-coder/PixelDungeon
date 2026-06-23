@@ -5,7 +5,7 @@ import type { FrameInfo } from "./Renderer";
 import type { Grid } from "@/core/grid/Grid";
 import { Terrain } from "@/core/grid/terrain";
 import type { EnemyState } from "@/core/actors/Enemy";
-import { clampCameraPan, computeCameraViewport, type CameraPan, type Viewport } from "./viewport";
+import { computeCameraViewport, type CameraPan, type Viewport } from "./viewport";
 import type { SpriteKey, SpriteSheetAssets } from "./AssetLoader";
 
 const VISIBLE = {
@@ -39,6 +39,7 @@ const IDLE_START_DELAY_SECONDS = 1.4;
 const STRIKE_DURATION_SECONDS = 0.15;
 const MOVE_TWEEN_DURATION_MS = 150;
 const DAMAGE_POPUP_DURATION_SECONDS = 1;
+const PICKUP_ANIMATION_DURATION_SECONDS = 0.5;
 const HERO_DRAW_SCALE = 0.78;
 // SPD CharSprite.worldToCamera raises actors by 6px on a 16px tile so their
 // feet stand on the raised floor plane, not on the tile's lower wall edge.
@@ -78,6 +79,11 @@ export interface ActorMoveAnimationEvent {
   toCell: number;
 }
 
+export interface ItemPickupAnimationEvent {
+  itemId: string;
+  cell: number;
+}
+
 interface CombatStrikeAnimation extends CombatStrikeAnimationEvent {
   startedAt: number | null;
 }
@@ -93,10 +99,15 @@ interface DamagePopup {
   startedAt: number | null;
 }
 
+interface ItemPickupAnimation extends ItemPickupAnimationEvent {
+  startedAt: number | null;
+}
+
 const activeStrikes: CombatStrikeAnimation[] = [];
 const activeMoves = new Map<string, ActorMoveAnimation>();
 const actorFacingX = new Map<string, -1 | 1>();
 const activeDamagePopups: DamagePopup[] = [];
+const activeItemPickups: ItemPickupAnimation[] = [];
 
 export function queueCombatStrikeAnimation(event: CombatStrikeAnimationEvent): void {
   activeStrikes.push({ ...event, startedAt: null });
@@ -116,11 +127,16 @@ export function queueActorMoveAnimation(event: ActorMoveAnimationEvent): void {
   });
 }
 
+export function queueItemPickupAnimation(event: ItemPickupAnimationEvent): void {
+  activeItemPickups.push({ ...event, startedAt: null });
+}
+
 export function clearCombatAnimations(): void {
   activeStrikes.length = 0;
   activeMoves.clear();
   actorFacingX.clear();
   activeDamagePopups.length = 0;
+  activeItemPickups.length = 0;
 }
 
 export function detachMapCameraBy(dx: number, dy: number): void {
@@ -147,19 +163,14 @@ export function computeMapSceneViewport(
   heroPos: number,
   zoomMultiplier = 1,
 ): Viewport {
-  const pan = currentCameraPan(viewW, viewH, grid, heroPos, zoomMultiplier);
-  return computeCameraViewport(viewW, viewH, grid, heroPos, zoomMultiplier, pan);
+  const pan = currentCameraPan();
+  return computeCameraViewport(viewW, viewH, grid, heroPos, zoomMultiplier, pan, {
+    allowOutOfBounds: isCameraDetached,
+  });
 }
 
-function currentCameraPan(
-  viewW: number,
-  viewH: number,
-  grid: Grid,
-  heroPos: number,
-  zoomMultiplier: number,
-): CameraPan {
+function currentCameraPan(): CameraPan {
   if (!isCameraDetached) return { x: 0, y: 0 };
-  detachedCameraPan = clampCameraPan(viewW, viewH, grid, heroPos, zoomMultiplier, detachedCameraPan);
   return detachedCameraPan;
 }
 
@@ -217,6 +228,7 @@ export function drawMapScene(
   const ts = vp.tileSize;
   const idleElapsed = idleElapsedAfterStillness(frame.elapsed, view);
   updateCombatAnimations(frame.elapsed);
+  updateItemPickupAnimations(frame.elapsed);
   const minX = Math.max(0, Math.floor(-vp.offsetX / ts) - 1);
   const minY = Math.max(0, Math.floor(-vp.offsetY / ts) - 1);
   const maxX = Math.min(grid.width - 1, Math.ceil((frame.width - vp.offsetX) / ts) + 1);
@@ -393,6 +405,7 @@ export function drawMapScene(
   );
 
   drawDamagePopups(ctx, vp, grid, frame.elapsed, assets);
+  drawItemPickupAnimations(ctx, vp, grid, frame, assets);
 
   if (view.selectedCell !== null) {
     const sx = grid.xOf(view.selectedCell);
@@ -837,6 +850,13 @@ function updateCombatAnimations(elapsed: number): void {
   removeExpired(activeDamagePopups, elapsed, DAMAGE_POPUP_DURATION_SECONDS);
 }
 
+function updateItemPickupAnimations(elapsed: number): void {
+  for (const pickup of activeItemPickups) {
+    pickup.startedAt ??= elapsed;
+  }
+  removeExpired(activeItemPickups, elapsed, PICKUP_ANIMATION_DURATION_SECONDS);
+}
+
 function removeExpired<T extends { startedAt: number | null }>(
   list: T[],
   elapsed: number,
@@ -882,6 +902,11 @@ function visualOffsetForActor(
   }
   for (const strike of activeStrikes) {
     if (strike.attackerId !== actorId || strike.startedAt === null) continue;
+    const attackerX = grid.xOf(strike.attackerCell);
+    const defenderX = grid.xOf(strike.defenderCell);
+    if (defenderX !== attackerX) {
+      actorFacingX.set(actorId, defenderX < attackerX ? -1 : 1);
+    }
     const progress = Math.max(
       0,
       Math.min(1, (elapsed - strike.startedAt) / STRIKE_DURATION_SECONDS),
@@ -897,6 +922,46 @@ function visualOffsetForActor(
     pixelOffsetY += (dy / len) * reach;
   }
   return { pixelOffsetX, pixelOffsetY, movingElapsed };
+}
+
+function drawItemPickupAnimations(
+  ctx: CanvasRenderingContext2D,
+  vp: VP,
+  grid: Grid,
+  frame: FrameInfo,
+  assets?: SpriteSheetAssets,
+): void {
+  if (!assets) return;
+  const ts = vp.tileSize;
+  const targetX = frame.width - Math.max(44, ts * 0.9);
+  const targetY = frame.height - Math.max(40, ts * 0.72);
+
+  for (const pickup of activeItemPickups) {
+    if (pickup.startedAt === null) continue;
+    const progress = Math.max(
+      0,
+      Math.min(1, (frame.elapsed - pickup.startedAt) / PICKUP_ANIMATION_DURATION_SECONDS),
+    );
+    const left = 1 - progress;
+    const sprite =
+      assets.spriteForItem(pickup.itemId) ??
+      assets.spriteForItemType("potion");
+    const size = Math.max(6, ts * 0.62 * Math.sqrt(left));
+    const startX = vp.offsetX + grid.xOf(pickup.cell) * ts + ts / 2;
+    const startY = vp.offsetY + grid.yOf(pickup.cell) * ts + ts * 0.5;
+    const lift = Math.sin(progress * Math.PI) * ts * 0.55;
+    const x = startX * left + targetX * progress;
+    const y = startY * left + targetY * progress - lift;
+    drawSprite(
+      ctx,
+      assets,
+      sprite,
+      x - size / 2,
+      y - size / 2,
+      size,
+      Math.max(0, Math.min(1, left * 1.2)),
+    );
+  }
 }
 
 function nowMs(): number {

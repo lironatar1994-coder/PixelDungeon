@@ -249,6 +249,32 @@ describe("GameWorld", () => {
     expect(heroTurn?.time).toBeCloseTo(1);
   });
 
+  it("emits a pickup callback after adding a ground item to inventory", () => {
+    const base = new GameWorld("WORLD-PICKUP-EVENT", contentWithGroundPotion, { enemyCount: 0 });
+    const pickupCell = base.grid
+      .neighbours4(base.heroPos)
+      .find((cell) => (
+        base.grid.isWalkable(cell) &&
+        cell !== base.level.entrance &&
+        cell !== base.level.exit
+      ));
+    expect(pickupCell).toBeDefined();
+
+    const snapshot = base.snapshot();
+    snapshot.hero.pos = pickupCell!;
+    snapshot.dungeon.levels[0]!.groundItems = [
+      { cell: pickupCell!, itemId: "potion_strength" },
+    ];
+
+    const events: Array<{ itemId: string; cell: number }> = [];
+    const w = GameWorld.fromSnapshot(snapshot, contentWithGroundPotion, {
+      onItemPickup: (event) => events.push(event),
+    });
+
+    expect(w.tryPickUpItem()).toBe(true);
+    expect(events).toEqual([{ itemId: "potion_strength", cell: pickupCell! }]);
+  });
+
   it("wait spends one hero action scaled by the current speed stat", () => {
     const w = makeWorld("WORLD-WAIT", { enemyCount: 0 });
     w.heroStats.addModifier({ id: "haste-test", stat: "speed", amount: 1 });
