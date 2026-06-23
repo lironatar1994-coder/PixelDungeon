@@ -8,14 +8,17 @@
  *      arbitrary A* tunnels through a BSP map.
  *   3. Paint rooms, doors, water, grass, stairs, and loot.
  *
- * Everything is driven by the single injected RNG, so a master seed always
- * yields the exact same dungeon (Directive 4). No DOM, no rendering here.
+ * Regular floors derive scoped RNG streams from the injected RNG so terrain
+ * decoration changes do not silently move stairs, traps, or loot.
  */
 import { Grid } from "@/core/grid/Grid";
 import { Terrain } from "@/core/grid/terrain";
 import { Rect } from "@/core/grid/Rect";
-import type { RNG } from "@/core/rng/Mulberry32";
+import { RNG } from "@/core/rng/Mulberry32";
 import { generatePatch } from "@/core/grid/gen/Patch";
+import type { GeneratedRoomMetadata, GeneratedTrapMetadata, RegularLevelPlan } from "./regular/types";
+import { buildRegularRoomGraph } from "./regular/builders";
+import { paintRegularLevel } from "./regular/painter";
 
 export interface GeneratedGroundItem {
   cell: number;
@@ -29,6 +32,8 @@ export interface GeneratedLevel {
   exit: number;
   groundItems: GeneratedGroundItem[];
   floorVariants: Map<number, number>;
+  roomMetadata?: GeneratedRoomMetadata[];
+  trapMetadata?: GeneratedTrapMetadata[];
 }
 
 export interface LootGenerationOptions {
@@ -38,6 +43,10 @@ export interface LootGenerationOptions {
   guaranteedItemIds?: readonly string[];
   /** Random item count; defaults to a small deterministic 2..4 when itemIds exist. */
   itemCount?: number;
+}
+
+export interface LevelGenerationOptions {
+  plan?: RegularLevelPlan | null;
 }
 
 type Direction = "north" | "east" | "south" | "west";
@@ -66,9 +75,13 @@ export function generateLevel(
   width: number,
   height: number,
   rng: RNG,
-  _opts: unknown = undefined,
+  opts: LevelGenerationOptions = {},
   loot: LootGenerationOptions = {},
 ): GeneratedLevel {
+  if (opts.plan?.kind === "regular") {
+    return generateRegularLevel(width, height, rng, opts.plan, loot);
+  }
+
   const grid = new Grid(width, height, Terrain.WALL);
   const floorVariants = new Map<number, number>();
 
@@ -88,6 +101,48 @@ export function generateLevel(
   const groundItems = generateGroundItems(grid, rng, entrance, exit, loot);
 
   return { grid, rooms, entrance, exit, groundItems, floorVariants };
+}
+
+function generateRegularLevel(
+  width: number,
+  height: number,
+  rng: RNG,
+  plan: RegularLevelPlan,
+  loot: LootGenerationOptions,
+): GeneratedLevel {
+  const scopeSeed = regularScopeSeed(rng, plan);
+  for (let attempt = 0; attempt < 96; attempt++) {
+    const attemptSeed = `${scopeSeed}:attempt:${attempt}`;
+    const built = buildRegularRoomGraph(plan, new RNG(`${attemptSeed}:builder`));
+    if (!built) continue;
+    const generated = paintRegularLevel(
+      built,
+      plan,
+      {
+        terrain: new RNG(`${attemptSeed}:terrain`),
+        placement: new RNG(`${attemptSeed}:placement`),
+        traps: new RNG(`${attemptSeed}:traps`),
+        loot: new RNG(`${attemptSeed}:loot`),
+      },
+      loot,
+    );
+    if (generated.grid.width >= Math.min(16, width) && generated.grid.height >= Math.min(16, height)) {
+      return generated;
+    }
+  }
+  throw new Error(`Unable to generate regular ${plan.region} level for depth ${plan.depth}`);
+}
+
+function regularScopeSeed(rng: RNG, plan: RegularLevelPlan): string {
+  return [
+    rng.label,
+    rng.initialState,
+    rng.state,
+    "regular",
+    plan.region,
+    plan.depth,
+    plan.builder.kind,
+  ].join(":");
 }
 
 function buildRoomGraph(width: number, height: number, rng: RNG): RoomGraph {

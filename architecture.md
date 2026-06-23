@@ -954,3 +954,32 @@ levels immediately affect displayed damage, armor, and strength requirement.
 Focused migration coverage passes for inventory, item scaling, item factory,
 GameWorld pickup/consume/equipment flows, SaveManager rehydration,
 DungeonManager loot persistence, and procgen loot selection.
+
+### Phase 20 - Sewer Regular-Level Pipeline COMPLETE
+Replaced sewer depths 1-5 with a plan/list/build/paint pipeline modeled on
+Shattered Pixel Dungeon's `RegularLevel`, `RegularBuilder`, `LoopBuilder`,
+`FigureEightBuilder`, and `RegularPainter`. **`plan.ts`**
+([src/core/procgen/regular/plan.ts](src/core/procgen/regular/plan.ts)) builds
+deterministic per-depth sewer plans with original-style room budgets and secret
+distribution; **`builders.ts`**
+([src/core/procgen/regular/builders.ts](src/core/procgen/regular/builders.ts))
+places a connected loop or figure-eight room graph with branch rooms; and
+**`painter.ts`**
+([src/core/procgen/regular/painter.ts](src/core/procgen/regular/painter.ts))
+paints typed sewer rooms, valid door seams, water/grass/decor, trap metadata,
+stairs, and loot.
+
+**`DungeonManager`** ([src/core/dungeon/DungeonManager.ts](src/core/dungeon/DungeonManager.ts))
+now precomputes generation plans from the run seed so floor generation stays
+stable regardless of lazy access order, while missing plans in older saves are
+rebuilt from the seed on load. **`Level`**
+([src/core/dungeon/Level.ts](src/core/dungeon/Level.ts)) keeps the existing
+`rooms: Rect[]` contract and adds optional room/trap metadata for future
+special-room and trap mechanics; depths 6+ still use the legacy generator until
+their regions are ported.
+
+Regular sewer generation now derives separate RNG streams for graph building,
+terrain paint, stair placement, traps, and loot, so tuning grass/water density
+does not move item drops. Painter reachability is tested after all decoration
+is applied, and builder collision checks reject padded non-connected overlaps
+while the fallback layout rejects unconnected door seams.

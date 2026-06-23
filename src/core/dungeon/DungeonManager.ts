@@ -14,6 +14,8 @@
  */
 import { RNG } from "@/core/rng/Mulberry32";
 import { generateLevel } from "@/core/procgen/LevelGenerator";
+import { buildDungeonGenerationPlans } from "@/core/procgen/regular/plan";
+import type { RegularLevelPlan } from "@/core/procgen/regular/types";
 import { Grid } from "@/core/grid/Grid";
 import { Level, type LevelSnapshot } from "./Level";
 import type { ItemDef } from "@/core/data/types";
@@ -26,6 +28,7 @@ export interface DungeonSnapshot {
   seed: string;
   depth: number;
   levels: LevelSnapshot[];
+  generationPlans?: Array<RegularLevelPlan | null>;
 }
 
 export interface DungeonLootConfig {
@@ -52,6 +55,7 @@ export class DungeonManager {
   private readonly itemDefs: ItemDef[];
   private readonly strengthPotionId: string | null;
   private readonly strengthPotionDepths: Set<number>;
+  private generationPlans: Array<RegularLevelPlan | null>;
   private currentDepth = 1;
 
   constructor(seed: string, loot: DungeonLootConfig = {}) {
@@ -63,6 +67,7 @@ export class DungeonManager {
     this.strengthPotionDepths = this.strengthPotionId
       ? chooseStrengthPotionDepths(seed)
       : new Set<number>();
+    this.generationPlans = buildDungeonGenerationPlans(seed, DUNGEON_DEPTH);
   }
 
   get depth(): number {
@@ -102,7 +107,9 @@ export class DungeonManager {
         this.strengthPotionId && this.strengthPotionDepths.has(depth)
           ? [this.strengthPotionId]
           : [];
-      const generated = generateLevel(size, size, new RNG(depthSeed), undefined, {
+      const generated = generateLevel(size, size, new RNG(depthSeed), {
+        plan: this.generationPlans[depth],
+      }, {
         itemIds: this.lootItemIds,
         guaranteedItemIds,
       });
@@ -141,6 +148,8 @@ export class DungeonManager {
           })
           .filter((ground): ground is NonNullable<typeof ground> => ground !== null),
         floorVariants: generated.floorVariants,
+        roomMetadata: generated.roomMetadata,
+        trapMetadata: generated.trapMetadata,
       });
       this.levels[depth] = level;
     }
@@ -181,11 +190,13 @@ export class DungeonManager {
       seed: this.seed,
       depth: this.currentDepth,
       levels,
+      generationPlans: this.generationPlans.slice(),
     };
   }
 
   static fromSnapshot(snapshot: DungeonSnapshot, loot: DungeonLootConfig = {}): DungeonManager {
     const dungeon = new DungeonManager(snapshot.seed, loot);
+    dungeon.generationPlans = normalizeGenerationPlans(snapshot.generationPlans, snapshot.seed);
     for (const levelSnapshot of snapshot.levels) {
       if (levelSnapshot.depth < 1 || levelSnapshot.depth > DUNGEON_DEPTH) continue;
       const grid = Grid.fromSnapshot(
@@ -212,4 +223,16 @@ function chooseStrengthPotionDepths(seed: string): Set<number> {
   const depths = [1, 2, 3, 4, 5];
   new RNG(`${seed}:strength-potions`).shuffle(depths);
   return new Set(depths.slice(0, 2));
+}
+
+function normalizeGenerationPlans(
+  plans: Array<RegularLevelPlan | null> | undefined,
+  seed: string,
+): Array<RegularLevelPlan | null> {
+  if (!plans || plans.length === 0) return buildDungeonGenerationPlans(seed, DUNGEON_DEPTH);
+  const normalized = buildDungeonGenerationPlans(seed, DUNGEON_DEPTH);
+  for (let depth = 1; depth <= DUNGEON_DEPTH; depth++) {
+    normalized[depth] = plans[depth] ?? normalized[depth] ?? null;
+  }
+  return normalized;
 }

@@ -14,6 +14,7 @@ import type { Grid } from "@/core/grid/Grid";
 import { Rect } from "@/core/grid/Rect";
 import type { Terrain } from "@/core/grid/terrain";
 import type { ItemInstance, ItemInstanceSnapshot } from "@/core/items/ItemInstance";
+import type { GeneratedRoomMetadata, GeneratedTrapMetadata } from "@/core/procgen/regular/types";
 
 export interface GroundItem {
   cell: number;
@@ -38,6 +39,8 @@ export interface LevelSnapshot {
   groundItems: Array<GroundItem | LegacyGroundItem>;
   openDoors: number[];
   floorVariants: [number, number][];
+  roomMetadata?: GeneratedRoomMetadata[];
+  trapMetadata?: GeneratedTrapMetadata[];
 }
 
 export class Level {
@@ -62,6 +65,8 @@ export class Level {
 
   /** Static random visual variant (0, 1, or 2) assigned to each floor cell. */
   readonly floorVariants: Map<number, number>;
+  readonly roomMetadata: GeneratedRoomMetadata[];
+  readonly trapMetadata: GeneratedTrapMetadata[];
 
   /** One loose physical item instance per cell. */
   private readonly groundItemByCell = new Map<number, ItemInstance>();
@@ -76,6 +81,8 @@ export class Level {
     groundItems?: ReadonlyArray<GroundItem | LegacyGroundItem>;
     openDoors?: Set<number>;
     floorVariants?: Map<number, number>;
+    roomMetadata?: readonly GeneratedRoomMetadata[];
+    trapMetadata?: readonly GeneratedTrapMetadata[];
   }) {
     this.depth = params.depth;
     this.seed = params.seed;
@@ -88,6 +95,8 @@ export class Level {
     }
     this.openDoors = params.openDoors ?? new Set();
     this.floorVariants = params.floorVariants ?? new Map();
+    this.roomMetadata = [...(params.roomMetadata ?? [])];
+    this.trapMetadata = [...(params.trapMetadata ?? [])];
   }
 
   get groundItems(): GroundItem[] {
@@ -129,6 +138,12 @@ export class Level {
       })),
       openDoors: [...this.openDoors],
       floorVariants: [...this.floorVariants.entries()],
+      roomMetadata: this.roomMetadata.map((room) => ({
+        ...room,
+        rect: { ...room.rect },
+        connections: [...room.connections],
+      })),
+      trapMetadata: this.trapMetadata.map((trap) => ({ ...trap })),
     };
   }
 
@@ -143,6 +158,8 @@ export class Level {
       groundItems: snapshot.groundItems ?? [],
       openDoors: new Set(snapshot.openDoors ?? []),
       floorVariants: new Map(snapshot.floorVariants ?? []),
+      roomMetadata: snapshot.roomMetadata ?? [],
+      trapMetadata: snapshot.trapMetadata ?? [],
     });
     for (const cell of snapshot.explored) {
       if (grid.inBoundsCell(cell)) level.explored.add(cell);

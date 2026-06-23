@@ -9,6 +9,7 @@ Antigravity AI
 - No imports from browser APIs or other non-headless environments.
 - All game rules, equations, turn schedules, and grid coordinates reside here.
 - Must be fully unit testable under Vitest.
+- Procedural generation must remain deterministic from explicit seeds and save-compatible snapshots.
 
 # Work Guidance
 - Use Mulberry32 for all seeded RNG operations.
@@ -21,4 +22,4 @@ Antigravity AI
 - Run unit tests with `npm test`.
 
 # Child DOX Index
-- None (leaf folder with no sub-agent DOX contracts).
+- [procgen/AGENTS.md](file:///c:/Users/liron/Pixel%20Dungeon/src/core/procgen/AGENTS.md): Seeded dungeon generation, regular-level plans, builders, painters, and map metadata.

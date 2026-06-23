@@ -83,6 +83,35 @@ describe("DungeonManager", () => {
     expect(strengthDepths).toHaveLength(2);
   });
 
+  it("uses sewer regular metadata for depths 1..5 and leaves deeper floors on the legacy generator", () => {
+    const d = new DungeonManager("SEWER-METADATA");
+    const sewer = d.levelAt(1);
+    const deeper = d.levelAt(6);
+
+    expect(sewer.roomMetadata.length).toBeGreaterThan(0);
+    expect(sewer.trapMetadata.length).toBeGreaterThan(0);
+    expect(deeper.roomMetadata).toEqual([]);
+    expect(deeper.trapMetadata).toEqual([]);
+    expect(d.snapshot().generationPlans?.[1]?.region).toBe("sewer");
+    expect(d.snapshot().generationPlans?.[6]).toBeNull();
+  });
+
+  it("loads legacy snapshots without generation plans or room/trap metadata", () => {
+    const d = new DungeonManager("LEGACY-SNAPSHOT");
+    d.levelAt(1);
+    const snapshot = d.snapshot();
+    delete snapshot.generationPlans;
+    for (const level of snapshot.levels) {
+      delete level.roomMetadata;
+      delete level.trapMetadata;
+    }
+
+    const restored = DungeonManager.fromSnapshot(snapshot);
+
+    expect(restored.levelAt(1).roomMetadata).toEqual([]);
+    expect(restored.levelAt(2).roomMetadata.length).toBeGreaterThan(0);
+  });
+
   it("rejects out-of-range depths", () => {
     const d = new DungeonManager("RANGE");
     expect(() => d.levelAt(0)).toThrow();

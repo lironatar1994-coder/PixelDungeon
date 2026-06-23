@@ -364,17 +364,41 @@ export class GameWorld {
     const heroY = grid.yOf(level.entrance);
     const rooms = level.rooms.filter((r) => !r.contains(heroX, heroY));
     const pool = rng.shuffle((rooms.length > 0 ? rooms : level.rooms).slice());
+    const initialFov = new FieldOfView();
+    initialFov.update(
+      grid,
+      level.entrance,
+      this.visionRadius,
+      (cell) => grid.get(cell) === Terrain.WALL || grid.get(cell) === Terrain.DOOR,
+    );
 
     const senses = this.makeSenses();
     const used = new Set<number>([
       level.entrance,
+      level.exit,
       ...level.groundItems.map((item) => item.cell),
     ]);
-    const count = Math.min(this.enemyCount, pool.length);
+    const candidates: number[] = [];
+    for (const room of pool) {
+      for (let y = room.y + 1; y < room.bottom - 1; y++) {
+        for (let x = room.x + 1; x < room.right - 1; x++) {
+          const cell = grid.cell(x, y);
+          if (
+            !used.has(cell) &&
+            grid.isWalkable(cell) &&
+            !initialFov.visible.has(cell) &&
+            Math.max(Math.abs(x - heroX), Math.abs(y - heroY)) > 6
+          ) {
+            candidates.push(cell);
+          }
+        }
+      }
+    }
+    rng.shuffle(candidates);
+
+    const count = Math.min(this.enemyCount, candidates.length);
     for (let i = 0; i < count; i++) {
-      const room = pool[i]!;
-      const cell = grid.cell(room.centerX, room.centerY);
-      if (used.has(cell) || !grid.isWalkable(cell)) continue;
+      const cell = candidates[i]!;
       used.add(cell);
       // The full stat profile (health/speed/vision/accuracy/...) comes from JSON.
       const def = this.content.randomEnemyForDepth(this.dungeon.depth, rng);
