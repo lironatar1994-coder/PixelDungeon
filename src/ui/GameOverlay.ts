@@ -296,18 +296,21 @@ export class GameOverlay {
       if (entry) entry.count += item.quantity ?? 1;
       else grouped.set(item.defId, { item, count: item.quantity ?? 1 });
     }
-    const slots = [...grouped.values()].slice(0, 4);
+    const slots = [...grouped.values()].slice(0, 6);
     const sig = slots.map((s) => `${s.item.defId}x${s.count}`).join(",");
     if (sig === this.quickslotSig) return;
     this.quickslotSig = sig;
 
     this.quickslotGroup.replaceChildren();
-    const slotCount = Math.max(2, slots.length); // always show at least two frames
+    const slotCount = 6;
     for (let i = 0; i < slotCount; i++) {
       const slot = slots[i];
       const button = document.createElement("button");
       button.type = "button";
       button.className = slot ? "quickslot-slot" : "quickslot-slot quickslot-empty";
+      button.classList.add(
+        i === 0 ? "quickslot-slot-first" : i === slotCount - 1 ? "quickslot-slot-last" : "quickslot-slot-middle",
+      );
       if (!slot) {
         button.disabled = true;
         button.setAttribute("aria-hidden", "true");
@@ -745,7 +748,7 @@ export class GameOverlay {
   ): HTMLButtonElement {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "action-button";
+    button.className = `action-button action-button-${sprite}`;
     button.title = label;
     button.setAttribute("aria-label", label);
     const icon = document.createElement("span");
