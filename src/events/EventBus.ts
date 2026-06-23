@@ -30,8 +30,6 @@ export interface GameEvents {
   };
   /** A pointer that fell through all UI layers to the game world. */
   "input:world": { x: number; y: number };
-  /** A world-space pointer drag used for camera inspection, never movement. */
-  "input:world-pan": { x: number; y: number; dx: number; dy: number };
   /** A pointer consumed by a UI layer (the world must NOT react to it). */
   "input:ui": { layer: string; x: number; y: number };
   "combat:log": { line: string };

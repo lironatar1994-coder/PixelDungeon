@@ -5,7 +5,7 @@ import type { FrameInfo } from "./Renderer";
 import type { Grid } from "@/core/grid/Grid";
 import { Terrain } from "@/core/grid/terrain";
 import type { EnemyState } from "@/core/actors/Enemy";
-import { computeCameraViewport, type CameraPan } from "./viewport";
+import { clampCameraPan, computeCameraViewport, type CameraPan, type Viewport } from "./viewport";
 import type { SpriteKey, SpriteSheetAssets } from "./AssetLoader";
 
 const VISIBLE = {
@@ -60,6 +60,8 @@ const DOOR_OVERHANG_OPEN = DOOR_OVERHANG + 1;
 const DOOR_SIDEWAYS = DOOR_OVERHANG + 3;
 let previousActivitySignature: string | null = null;
 let lastActivityAt = 0;
+let isCameraDetached = false;
+let detachedCameraPan: CameraPan = { x: 0, y: 0 };
 
 export interface CombatStrikeAnimationEvent {
   attackerId: string;
@@ -119,6 +121,46 @@ export function clearCombatAnimations(): void {
   activeDamagePopups.length = 0;
 }
 
+export function detachMapCameraBy(dx: number, dy: number): void {
+  isCameraDetached = true;
+  detachedCameraPan = {
+    x: detachedCameraPan.x + dx,
+    y: detachedCameraPan.y + dy,
+  };
+}
+
+export function snapMapCameraToHero(): void {
+  isCameraDetached = false;
+  detachedCameraPan = { x: 0, y: 0 };
+}
+
+export function isMapCameraDetached(): boolean {
+  return isCameraDetached;
+}
+
+export function computeMapSceneViewport(
+  viewW: number,
+  viewH: number,
+  grid: Grid,
+  heroPos: number,
+  zoomMultiplier = 1,
+): Viewport {
+  const pan = currentCameraPan(viewW, viewH, grid, heroPos, zoomMultiplier);
+  return computeCameraViewport(viewW, viewH, grid, heroPos, zoomMultiplier, pan);
+}
+
+function currentCameraPan(
+  viewW: number,
+  viewH: number,
+  grid: Grid,
+  heroPos: number,
+  zoomMultiplier: number,
+): CameraPan {
+  if (!isCameraDetached) return { x: 0, y: 0 };
+  detachedCameraPan = clampCameraPan(viewW, viewH, grid, heroPos, zoomMultiplier, detachedCameraPan);
+  return detachedCameraPan;
+}
+
 export interface MapView {
   grid: Grid;
   seed: string;
@@ -167,17 +209,9 @@ export function drawMapScene(
   view: MapView,
   assets?: SpriteSheetAssets,
   zoomMultiplier = 1,
-  cameraPan: CameraPan = { x: 0, y: 0 },
 ): void {
   const { grid } = view;
-  const vp = computeCameraViewport(
-    frame.width,
-    frame.height,
-    grid,
-    view.heroPos,
-    zoomMultiplier,
-    cameraPan,
-  );
+  const vp = computeMapSceneViewport(frame.width, frame.height, grid, view.heroPos, zoomMultiplier);
   const ts = vp.tileSize;
   const idleElapsed = idleElapsedAfterStillness(frame.elapsed, view);
   updateCombatAnimations(frame.elapsed);

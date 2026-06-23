@@ -18,19 +18,19 @@ import { GameLoop } from "@/core/GameLoop";
 import { Renderer } from "@/render/Renderer";
 import {
   clearCombatAnimations,
+  computeMapSceneViewport,
+  detachMapCameraBy,
   drawMapScene,
   queueActorMoveAnimation,
   queueCombatStrikeAnimation,
+  snapMapCameraToHero,
   type MapView,
 } from "@/render/MapScene";
 import { AssetLoader, type SpriteKey } from "@/render/AssetLoader";
 import {
-  clampCameraPan,
   clampZoomMultiplier,
-  computeCameraViewport,
   pixelToCell,
   MAP_TOP_INSET,
-  type CameraPan,
 } from "@/render/viewport";
 import {
   GameWorld,
@@ -144,7 +144,6 @@ async function boot(): Promise<void> {
   let autoWalkKnownHostileIds = new Set<number>();
   let autoWalkElapsed = 0;
   let zoomMultiplier = 1;
-  let cameraPan: CameraPan = { x: 0, y: 0 };
   let pinchDistance: number | null = null;
   let gameOverReported = false;
   let menu: MainMenu | null = null;
@@ -253,7 +252,7 @@ async function boot(): Promise<void> {
     seed = nextSeed;
     selectedCell = null;
     targetingMode = null;
-    cameraPan = { x: 0, y: 0 };
+    snapMapCameraToHero();
     gameOverReported = false;
     clearCombatAnimations();
     cancelAutoWalk();
@@ -524,19 +523,10 @@ async function boot(): Promise<void> {
 
   function startTargetingMode(mode: TargetingMode): void {
     if (appState !== "Playing" || !world?.heroAlive) return;
-    if (mode === "look") {
-      if (targetingMode === "look") {
-        exitExploreMode();
-      } else {
-        enterExploreMode();
-      }
-      return;
-    }
-
     cancelAutoWalk();
     targetingMode = mode;
     selectedCell = null;
-    bus.emit("combat:log", { line: "Select a target." });
+    bus.emit("combat:log", { line: mode === "look" ? "Select a cell." : "Select a target." });
   }
 
   /** Begin approaching a targeted enemy; the per-step logic stops adjacent. */
@@ -626,63 +616,31 @@ async function boot(): Promise<void> {
   }
 
   function currentViewport(current: GameWorld) {
-    return computeCameraViewport(
+    return computeMapSceneViewport(
       window.innerWidth,
       window.innerHeight,
       current.grid,
       current.heroPos,
       zoomMultiplier,
-      cameraPan,
     );
   }
 
-  function clampCurrentCameraPan(current: GameWorld, pan = cameraPan): void {
-    cameraPan = clampCameraPan(
-      window.innerWidth,
-      window.innerHeight,
-      current.grid,
-      current.heroPos,
-      zoomMultiplier,
-      pan,
-    );
-  }
-
-  function resetCameraPan(): void {
-    cameraPan = { x: 0, y: 0 };
-  }
-
-  function enterExploreMode(): void {
-    if (targetingMode === "look") return;
-    cancelAutoWalk();
-    targetingMode = "look";
-    selectedCell = null;
-    bus.emit("combat:log", { line: "Explore mode. Drag to pan, tap to inspect. Esc to return." });
-  }
-
-  function exitExploreMode(line = "Camera recentered."): void {
-    if (targetingMode !== "look" && cameraPan.x === 0 && cameraPan.y === 0) return;
-    targetingMode = null;
-    selectedCell = null;
-    resetCameraPan();
-    bus.emit("combat:log", { line });
-  }
-
-  function panExploreCamera(current: GameWorld, dx: number, dy: number): void {
-    enterExploreMode();
-    clampCurrentCameraPan(current, {
-      x: cameraPan.x + dx,
-      y: cameraPan.y + dy,
-    });
-  }
-
-  const input = new InputManager(canvas, bus);
+  const input = new InputManager(canvas, bus, {
+    onWorldPan: (dx, dy) => {
+      if (appState === "Playing" && targetingMode !== "ranged") {
+        detachMapCameraBy(dx, dy);
+      }
+    },
+    onWorldTap: () => {
+      if (appState === "Playing") snapMapCameraToHero();
+    },
+  });
   input.registerUI(rectLayer("hud", { x: 0, y: 0, w: 1e6, h: MAP_TOP_INSET }, 10));
 
   bus.on("input:world", ({ x, y }) => {
     if (appState !== "Playing" || !world) return;
     const current = world;
     cancelAutoWalk(); // a tap always interrupts whatever travel was happening
-    clampCurrentCameraPan(current);
     const vp = currentViewport(current);
     const cell = pixelToCell(vp, current.grid, x, y);
     selectedCell = cell;
@@ -692,9 +650,12 @@ async function boot(): Promise<void> {
       if (mode === "ranged") {
         targetingMode = null;
         if (cell !== null) current.rangedAttack(cell);
-      } else if (cell !== null && mode === "look") {
-        selectedCell = cell;
-        bus.emit("combat:log", { line: describeLookCell(current, cell) });
+      } else if (mode === "look") {
+        targetingMode = null;
+        if (cell !== null) {
+          selectedCell = cell;
+          bus.emit("combat:log", { line: describeLookCell(current, cell) });
+        }
       }
       return;
     }
@@ -746,11 +707,6 @@ async function boot(): Promise<void> {
     }
   });
 
-  bus.on("input:world-pan", ({ dx, dy }) => {
-    if (appState !== "Playing" || !world || targetingMode === "ranged") return;
-    panExploreCamera(world, dx, dy);
-  });
-
   canvas.addEventListener(
     "wheel",
     (e) => {
@@ -758,7 +714,6 @@ async function boot(): Promise<void> {
       e.preventDefault();
       const delta = -e.deltaY * WHEEL_ZOOM_STEP;
       zoomMultiplier = clampZoomMultiplier(zoomMultiplier * (1 + delta));
-      if (world) clampCurrentCameraPan(world);
     },
     { passive: false },
   );
@@ -786,7 +741,6 @@ async function boot(): Promise<void> {
         zoomMultiplier = clampZoomMultiplier(
           zoomMultiplier * (1 + (ratio - 1) * PINCH_ZOOM_SENSITIVITY),
         );
-        if (world) clampCurrentCameraPan(world);
       }
       pinchDistance = nextDistance;
     },
@@ -866,13 +820,9 @@ async function boot(): Promise<void> {
     if (appState !== "Playing" || !world) return;
     if (targetingMode !== null && e.key === "Escape") {
       e.preventDefault();
-      if (targetingMode === "look") {
-        exitExploreMode();
-      } else {
-        targetingMode = null;
-        selectedCell = null;
-        bus.emit("combat:log", { line: "Targeting cancelled." });
-      }
+      targetingMode = null;
+      selectedCell = null;
+      bus.emit("combat:log", { line: "Targeting cancelled." });
       return;
     }
     if (overlay?.handleKeyDown(e)) return;
@@ -881,11 +831,7 @@ async function boot(): Promise<void> {
     const move = CARDINAL_AND_DIAGONAL_KEYS[normalizedKey] ?? NUMPAD_MOVES[e.code];
     if (move) {
       e.preventDefault();
-      if (targetingMode === "look") {
-        const tileSize = currentViewport(world).tileSize;
-        panExploreCamera(world, -move[0] * tileSize, -move[1] * tileSize);
-        return;
-      }
+      snapMapCameraToHero();
       world.tryMoveHero(move[0], move[1]);
       return;
     }
@@ -894,13 +840,13 @@ async function boot(): Promise<void> {
       world.descend();
       if (world.depth !== before) playSfx("descend");
       selectedCell = null;
-      resetCameraPan();
+      snapMapCameraToHero();
     } else if (e.key === "<" || e.key === ",") {
       const before = world.depth;
       world.ascend();
       if (world.depth !== before) playSfx("descend");
       selectedCell = null;
-      resetCameraPan();
+      snapMapCameraToHero();
     } else if (e.key === "q") {
       e.preventDefault();
       if (world.quaffHealing()) playSfx("drink");
@@ -928,7 +874,7 @@ async function boot(): Promise<void> {
       ctx.fillRect(0, 0, frame.width, frame.height);
       return;
     }
-    drawMapScene(ctx, frame, view(), assets, zoomMultiplier, cameraPan);
+    drawMapScene(ctx, frame, view(), assets, zoomMultiplier);
   });
 
   const loop = new GameLoop({ bus });

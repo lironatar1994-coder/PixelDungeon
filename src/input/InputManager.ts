@@ -13,14 +13,21 @@
 import type { EventBus } from "@/events/EventBus";
 import { PointerRouter, type InputLayer, type Point } from "./PointerRouter";
 
+export interface InputManagerOptions {
+  onWorldPan?: (dx: number, dy: number) => void;
+  onWorldTap?: () => void;
+}
+
 export class InputManager {
   readonly router = new PointerRouter();
   private readonly canvas: HTMLCanvasElement;
   private readonly bus: EventBus;
+  private readonly options: InputManagerOptions;
 
-  constructor(canvas: HTMLCanvasElement, bus: EventBus) {
+  constructor(canvas: HTMLCanvasElement, bus: EventBus, options: InputManagerOptions = {}) {
     this.canvas = canvas;
     this.bus = bus;
+    this.options = options;
     // Stop the browser turning touches into scroll/zoom/synthetic clicks.
     this.canvas.style.touchAction = "none";
     this.canvas.addEventListener("pointerdown", this.onPointerDown);
@@ -98,11 +105,11 @@ export class InputManager {
     const dy = point.y - this.lastPointerPos.y;
     this.lastPointerPos = point;
 
-    if (Math.hypot(totalDx, totalDy) <= 4) return;
+    if (Math.hypot(totalDx, totalDy) <= 10) return;
 
     this.pointerDragged = true;
     e.preventDefault();
-    this.bus.emit("input:world-pan", { x: point.x, y: point.y, dx, dy });
+    this.options.onWorldPan?.(dx, dy);
   };
 
   private onPointerUp = (e: PointerEvent): void => {
@@ -125,6 +132,7 @@ export class InputManager {
     // No UI claimed it: it belongs to the game world.
     e.preventDefault();
     this.bus.emit("input:world", { x: upPoint.x, y: upPoint.y });
+    this.options.onWorldTap?.();
   };
 
   private onPointerCancel = (e: PointerEvent): void => {
