@@ -19,8 +19,9 @@ export type SpriteSheetKey =
 
 export type SpriteKey =
   | "floor"
-  | "floor1"
-  | "floor2"
+  | "floorDeco"
+  | "grass"
+  | "water"
   | "wallTop"
   | "wallFront"
   | "wallFrontOpenRight"
@@ -116,10 +117,10 @@ function sheetRect(sheet: SpriteSheetKey, index: number, tileSize: number, w = t
 }
 
 const SPRITES: Record<SpriteKey, SpriteRect> = {
-  // Base floors (explicit coordinates as requested)
   floor: { sheet: "tiles", x: 0, y: 0, w: 16, h: 16 },
-  floor1: { sheet: "tiles", x: 16, y: 0, w: 16, h: 16 },
-  floor2: { sheet: "tiles", x: 32, y: 0, w: 16, h: 16 },
+  floorDeco: { sheet: "tiles", x: 16, y: 0, w: 16, h: 16 },
+  grass: { sheet: "tiles", x: 32, y: 0, w: 16, h: 16 },
+  water: { sheet: "tiles", x: 0, y: 32, w: 16, h: 16 },
   entrance: sheetRect("tiles", xy(1, 1) + 16, 16),
   exit: sheetRect("tiles", xy(1, 1) + 17, 16),
 
@@ -222,6 +223,8 @@ export class AssetLoader implements SpriteSheetAssets {
 
   spriteForTerrain(terrain: Terrain, _depth = 1): SpriteKey {
     if (terrain === Terrain.FLOOR) return "floor";
+    if (terrain === Terrain.GRASS) return "grass";
+    if (terrain === Terrain.WATER) return "water";
     if (terrain === Terrain.DOOR) return "doorFlat";
     return "wallTop";
   }
@@ -276,7 +279,7 @@ export class AssetLoader implements SpriteSheetAssets {
 }
 
 function isTerrainSprite(key: SpriteKey): boolean {
-  return key === "floor" || key === "floor1" || key === "floor2" || 
+  return key === "floor" || key === "floorDeco" || key === "grass" || key === "water" || 
          key === "wallTop" || key === "wallFront" ||
          key === "wallFrontOpenRight" || key === "wallFrontOpenLeft" || key === "wallFrontOpenBoth" ||
          key === "doorFlat" || key === "doorFlatOpen" ||

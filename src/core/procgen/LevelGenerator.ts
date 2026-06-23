@@ -24,6 +24,7 @@ import {
   DEFAULT_BSP_OPTIONS,
   type BSPOptions,
 } from "./BSP";
+import { LevelPainter } from "../grid/gen/Painter";
 
 export interface GeneratedLevel {
   grid: Grid;
@@ -61,19 +62,6 @@ export function generateLevel(
     .map((leaf) => leaf.room)
     .filter((room): room is Rect => room !== null);
 
-  // 1) Paint rooms as floor and remember which cells belong to a room.
-  const roomCells = new Set<number>();
-  for (const room of rooms) {
-    for (let y = room.y; y < room.bottom; y++) {
-      for (let x = room.x; x < room.right; x++) {
-        const cell = grid.cell(x, y);
-        grid.set(cell, Terrain.FLOOR);
-        floorVariants.set(cell, rng.pick([0, 1, 2]));
-        roomCells.add(cell);
-      }
-    }
-  }
-
   // Corridors may carve anywhere except the outer wall ring.
   const interior = (cell: number): boolean => {
     const x = grid.xOf(cell);
@@ -94,20 +82,11 @@ export function generateLevel(
     });
     if (!path) continue;
     for (const cell of path) {
-      if (grid.get(cell) === Terrain.WALL) {
-        grid.set(cell, Terrain.FLOOR);
-        floorVariants.set(cell, rng.pick([0, 1, 2]));
-        corridorCells.add(cell);
-      }
+      corridorCells.add(cell);
     }
   }
 
-  // 3) A corridor cell adjacent to a room is a doorway.
-  for (const cell of corridorCells) {
-    if (grid.neighbours4(cell).some((n) => roomCells.has(n))) {
-      grid.set(cell, Terrain.DOOR);
-    }
-  }
+  LevelPainter.paint(grid, rooms, corridorCells, floorVariants, rng);
 
   // 4) Stairs: the two room centers with the greatest Manhattan separation.
   let entrance = grid.cell(area.x, area.y);

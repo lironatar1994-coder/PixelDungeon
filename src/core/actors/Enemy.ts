@@ -46,6 +46,7 @@ export class Enemy extends Actor {
   // --- AI state (kept separate from combat stats, per Directive 1) ---
   state: EnemyState = "wander";
   lastKnownHeroPos: number | null = null;
+  wanderTarget: number | null = null;
 
   /** The data-driven definition this enemy was spawned from (Directive 5). */
   readonly def: EnemyDef;
@@ -149,6 +150,27 @@ export class Enemy extends Actor {
 
   private wanderStep(): void {
     const grid = this.senses.grid;
+
+    // 1. Pick a new roaming target if we don't have one, or if we arrived.
+    if (this.wanderTarget === null || this.pos === this.wanderTarget) {
+      this.wanderTarget = this.pickWanderTarget();
+    }
+
+    // 2. Try to actively pathfind towards the chosen room/cell.
+    if (this.wanderTarget !== null) {
+      const path = findPath(grid, this.pos, this.wanderTarget, {
+        passable: (c) => grid.isWalkable(c) && !this.senses.isOccupied(c) && c !== this.senses.heroPos(),
+      });
+      if (path && path.length >= 2) {
+        this.pos = path[1]!;
+        return;
+      } else {
+        // Path blocked or impossible, drop it and try a new one next turn
+        this.wanderTarget = null;
+      }
+    }
+
+    // 3. Fallback: just step to a random neighbor if pathing failed
     const options = grid
       .neighbours4(this.pos)
       .filter(
@@ -160,6 +182,18 @@ export class Enemy extends Actor {
     if (options.length > 0) {
       this.pos = this.senses.rng.pick(options);
     }
+  }
+
+  private pickWanderTarget(): number | null {
+    const grid = this.senses.grid;
+    // Try a few times to find an open floor cell
+    for (let i = 0; i < 20; i++) {
+      const rx = Math.floor(this.senses.rng.next() * grid.width);
+      const ry = Math.floor(this.senses.rng.next() * grid.height);
+      const cell = grid.cell(rx, ry);
+      if (grid.isWalkable(cell)) return cell;
+    }
+    return null;
   }
 }
 

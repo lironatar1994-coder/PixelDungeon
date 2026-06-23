@@ -8,19 +8,23 @@ import type { EnemyState } from "@/core/actors/Enemy";
 import { computeCameraViewport, type CameraPan, type Viewport } from "./viewport";
 import type { SpriteKey, SpriteSheetAssets } from "./AssetLoader";
 
-const VISIBLE = {
+const VISIBLE: Record<Terrain, string> = {
+  [Terrain.EMPTY]: "#000000",
   [Terrain.FLOOR]: "#e9e1c8",
-  [Terrain.DOOR]: "#c98a45",
   [Terrain.WALL]: "#3a3a45",
-  [Terrain.EMPTY]: "#000000",
-} as const;
+  [Terrain.DOOR]: "#c98a45",
+  [Terrain.GRASS]: "#6a8c4f",
+  [Terrain.WATER]: "#4b85a3",
+};
 
-const EXPLORED = {
-  [Terrain.FLOOR]: "#5b574a",
-  [Terrain.DOOR]: "#5e4524",
-  [Terrain.WALL]: "#1c1c22",
+const EXPLORED: Record<Terrain, string> = {
   [Terrain.EMPTY]: "#000000",
-} as const;
+  [Terrain.FLOOR]: "#5b574a",
+  [Terrain.WALL]: "#1c1c22",
+  [Terrain.DOOR]: "#5e4524",
+  [Terrain.GRASS]: "#2f4021",
+  [Terrain.WATER]: "#203a49",
+};
 
 const COLORS = {
   hero: "#7fe3ff",
@@ -428,8 +432,7 @@ function terrainAt(grid: Grid, x: number, y: number): Terrain | null {
 
 function floorSpriteForCell(view: MapView, cell: number): SpriteKey {
   const variant = view.floorVariants.get(cell);
-  if (variant === 1) return "floor1";
-  if (variant === 2) return "floor2";
+  if (variant === 1) return "floorDeco";
   return "floor";
 }
 

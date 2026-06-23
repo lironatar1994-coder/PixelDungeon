@@ -19,6 +19,10 @@ export enum Terrain {
   WALL = 2,
   /** A doorway: walkable, and (when open) transparent. */
   DOOR = 3,
+  /** High grass: walkable, but might obstruct vision or spawn dew drops later. */
+  GRASS = 4,
+  /** Shallow water: walkable, but might wash off debuffs or take longer to cross. */
+  WATER = 5,
 }
 
 export interface CellProperties {
@@ -35,4 +39,6 @@ export const TERRAIN_PROPERTIES: Record<Terrain, CellProperties> = {
   [Terrain.FLOOR]: { solid: false, walkable: true, transparent: true },
   [Terrain.WALL]: { solid: true, walkable: false, transparent: false },
   [Terrain.DOOR]: { solid: false, walkable: true, transparent: true },
+  [Terrain.GRASS]: { solid: false, walkable: true, transparent: true },
+  [Terrain.WATER]: { solid: false, walkable: true, transparent: true },
 };
