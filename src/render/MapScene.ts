@@ -38,6 +38,7 @@ const COLORS = {
 const IDLE_START_DELAY_SECONDS = 1.4;
 const STRIKE_DURATION_SECONDS = 0.15;
 const DAMAGE_POPUP_DURATION_SECONDS = 0.7;
+const HERO_DRAW_SCALE = 0.78;
 const TILE_SHEET_COLUMNS = 16;
 const RAISED_DOORS = sheetIndex(1, 8);
 const RAISED_DOOR = RAISED_DOORS;
@@ -290,14 +291,27 @@ export function drawMapScene(
         frameElapsed: frame.elapsed,
       },
     );
+    drawEnemyHealthBar(ctx, vp, grid, enemy.pos, enemy.hp, enemy.maxHealth, enemy.id, frame.elapsed);
   }
 
-  drawCell(ctx, assets, vp, grid, view.heroPos, view.hero.sprite, COLORS.hero, COLORS.heroEdge, {
-    elapsed: idleElapsed,
-    key: `hero:${view.heroPos}`,
-    actorId: "hero",
-    frameElapsed: frame.elapsed,
-  });
+  drawCell(
+    ctx,
+    assets,
+    vp,
+    grid,
+    view.heroPos,
+    view.hero.sprite,
+    COLORS.hero,
+    COLORS.heroEdge,
+    {
+      elapsed: idleElapsed,
+      key: `hero:${view.heroPos}`,
+      actorId: "hero",
+      frameElapsed: frame.elapsed,
+    },
+    view.depth,
+    HERO_DRAW_SCALE,
+  );
 
   drawDamagePopups(ctx, vp, grid, frame.elapsed);
 
@@ -439,19 +453,52 @@ function drawCell(
   edge?: string,
   motion?: ActorDrawMotion,
   depth = 1,
+  visualScale = 1,
 ): void {
   const ts = vp.tileSize;
   const strike = motion?.actorId
     ? visualOffsetForActor(motion.actorId, grid, ts, motion.frameElapsed)
     : { pixelOffsetX: 0, pixelOffsetY: 0 };
-  const x = vp.offsetX + grid.xOf(cell) * ts + strike.pixelOffsetX;
-  const y = vp.offsetY + grid.yOf(cell) * ts + strike.pixelOffsetY;
-  if (assets && drawSprite(ctx, assets, sprite, x, y, ts, 1, motion, depth)) {
+  const size = ts * visualScale;
+  const x = vp.offsetX + grid.xOf(cell) * ts + strike.pixelOffsetX + (ts - size) / 2;
+  const y = vp.offsetY + grid.yOf(cell) * ts + strike.pixelOffsetY + (ts - size);
+  if (assets && drawSprite(ctx, assets, sprite, x, y, size, 1, motion, depth)) {
     return;
   }
 
-  if (edge) drawDisc(ctx, x + ts / 2, y + ts / 2, ts, fill, edge);
-  else drawSquare(ctx, x, y, ts, fill);
+  if (edge) drawDisc(ctx, x + size / 2, y + size / 2, size, fill, edge);
+  else drawSquare(ctx, x, y, size, fill);
+}
+
+function drawEnemyHealthBar(
+  ctx: CanvasRenderingContext2D,
+  vp: VP,
+  grid: Grid,
+  cell: number,
+  hp: number,
+  maxHealth: number,
+  actorId: string,
+  elapsed: number,
+): void {
+  if (maxHealth <= 0) return;
+  const ts = vp.tileSize;
+  const offset = visualOffsetForActor(actorId, grid, ts, elapsed);
+  const ratio = Math.max(0, Math.min(1, hp / maxHealth));
+  const barWidth = Math.max(10, Math.round(ts * 0.58));
+  const barHeight = Math.max(3, Math.round(ts * 0.08));
+  const border = Math.max(1, Math.round(ts * 0.025));
+  const x = vp.offsetX + grid.xOf(cell) * ts + offset.pixelOffsetX + (ts - barWidth) / 2;
+  const y = vp.offsetY + grid.yOf(cell) * ts + offset.pixelOffsetY + Math.round(ts * 0.05);
+
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
+  ctx.fillRect(x - border, y - border, barWidth + border * 2, barHeight + border * 2);
+  ctx.fillStyle = "#4b1515";
+  ctx.fillRect(x, y, barWidth, barHeight);
+  ctx.fillStyle = ratio > 0.5 ? "#75d35c" : ratio > 0.25 ? "#e0c64b" : "#d8493f";
+  ctx.fillRect(x, y, Math.max(1, Math.round(barWidth * ratio)), barHeight);
+  ctx.restore();
 }
 
 function drawSprite(
