@@ -159,6 +159,22 @@ const HERO_BASE: BaseStats = {
 
 const MAX_LOG = 50;
 
+function positiveLog(line: string): string {
+  return `++ ${line}`;
+}
+
+function negativeLog(line: string): string {
+  return `-- ${line}`;
+}
+
+function warningLog(line: string): string {
+  return `** ${line}`;
+}
+
+function highlightLog(line: string): string {
+  return `@@ ${line}`;
+}
+
 export class GameWorld {
   dungeon: DungeonManager;
   readonly fov = new FieldOfView();
@@ -447,9 +463,9 @@ export class GameWorld {
       if (this.hero.level <= enemy.def.maxLevelCap && enemy.def.expReward > 0) {
         const progress = this.hero.addExperience(enemy.def.expReward);
         if (progress.gained > 0) {
-          this.pushLog(`You gain ${progress.gained} experience.`);
+          this.pushLog(positiveLog(`+${progress.gained} EXP`));
           if (progress.levelsGained > 0) {
-            this.pushLog(`You are now level ${this.hero.level}!`);
+            this.pushLog(positiveLog("Level up! +Accuracy, +Evasion, +5 HP!"));
             this.onHeroLevelUp?.({ level: this.hero.level });
           }
         }
@@ -460,7 +476,7 @@ export class GameWorld {
         name: enemy.name,
       });
       this.removeEnemy(enemy);
-      this.pushLog(`The ${enemy.name} dies!`);
+      this.pushLog(positiveLog(`Defeated the ${enemy.name}.`));
     }
   }
 
@@ -488,7 +504,7 @@ export class GameWorld {
       hit: true,
       damage: dealt,
     });
-    this.pushLog(`The ${attacker.name} hits you for ${r.damage}.`);
+    this.pushLog(negativeLog(`The ${attacker.name} hits you for ${r.damage}.`));
     if (dealt > 0) {
       this.onHeroDamaged?.({
         amount: dealt,
@@ -498,7 +514,7 @@ export class GameWorld {
     }
     if (!this.hero.stats.alive) {
       this.heroDead = true;
-      this.pushLog(`You have died on depth ${this.depth}.`);
+      this.pushLog(negativeLog(`You have died on depth ${this.depth}.`));
       const normalCauses = attacker.def.deathCauses?.normal;
       if (normalCauses && normalCauses.length > 0) {
         const index = Math.floor(this.combatRng.next() * normalCauses.length);
@@ -527,7 +543,7 @@ export class GameWorld {
     if (this.heroDead) return false;
     const item = this.inventoryRef.findByUid(itemUid);
     if (!item || !this.inventoryRef.equip(item)) return false;
-    this.pushLog(`You equip ${item.name}.`);
+    this.pushLog(positiveLog(`You equip ${item.name}.`));
     this.hero.pending = { kind: "wait" };
     this.processTurns();
     return true;
@@ -541,14 +557,14 @@ export class GameWorld {
       this.hero.stats.increaseBase("strength", item.def.strengthBonus);
       this.inventoryRef.remove(item);
       this.inventoryRef.refreshEquipmentModifiers();
-      this.pushLog(`You quaff ${item.name} (+${item.def.strengthBonus} STR).`);
+      this.pushLog(positiveLog(`You quaff ${item.name} (+${item.def.strengthBonus} STR).`));
     } else if (item.type === "potion" && typeof item.def.heal === "number") {
       const healed = this.hero.stats.heal(item.def.heal);
       this.inventoryRef.remove(item);
-      this.pushLog(`You quaff ${item.name} (+${healed} HP).`);
+      this.pushLog(positiveLog(`You quaff ${item.name} (+${healed} HP).`));
     } else if (item.type === "food") {
       this.inventoryRef.remove(item);
-      this.pushLog(`You eat ${item.name}.`);
+      this.pushLog(positiveLog(`You eat ${item.name}.`));
     } else {
       return false;
     }
@@ -585,12 +601,12 @@ export class GameWorld {
     const item = this.content.getItem(groundItem.defId);
     if (!item) {
       this.level.takeGroundItem(this.hero.pos);
-      this.pushLog("The item crumbles away.");
+      this.pushLog(warningLog("The item crumbles away."));
       this.emitChange();
       return false;
     }
     if (this.inventoryRef.isFull()) {
-      this.pushLog("Your pack is full.");
+      this.pushLog(warningLog("Your pack is full."));
       return false;
     }
 
@@ -603,7 +619,7 @@ export class GameWorld {
     if (this.heroDead || !this.grid.inBoundsCell(targetCell)) return false;
     const enemy = this.enemyAt(targetCell);
     if (!enemy) {
-      this.pushLog("No target there.");
+      this.pushLog(warningLog("No target there."));
       return false;
     }
 
@@ -613,7 +629,7 @@ export class GameWorld {
         (this.enemyAt(cell) !== null || !this.isCellTransparent(cell)),
     });
     if (path.at(-1) !== targetCell) {
-      this.pushLog("No clear shot.");
+      this.pushLog(warningLog("No clear shot."));
       return false;
     }
 
@@ -645,7 +661,6 @@ export class GameWorld {
 
     if (grid.get(target) === Terrain.DOOR && !this.level.openDoors.has(target)) {
       this.level.openDoors.add(target);
-      this.pushLog("You open the door.");
     }
 
     this.hero.pending = { kind: "move", cell: target };
@@ -659,7 +674,6 @@ export class GameWorld {
     if (target === null || !this.canCloseDoor(target)) return false;
 
     this.level.openDoors.delete(target);
-    this.pushLog("You close the door.");
     this.hero.pending = { kind: "wait" };
     this.processTurns();
     return true;
@@ -758,7 +772,7 @@ export class GameWorld {
       return;
     }
     this.onItemPickup?.({ itemUid: removed.uid, itemId: item.id, cell: this.hero.pos });
-    this.pushLog(`You pick up ${item.name}.`);
+    this.pushLog(positiveLog(`You picked up: ${item.name}.`));
   }
 
   recomputeFOV(): void {
@@ -772,15 +786,23 @@ export class GameWorld {
 
   descend(): void {
     if (this.heroDead) return;
+    const before = this.depth;
     this.dungeon.descend();
     this.enterFloor();
+    if (this.depth !== before) {
+      this.pushLog(highlightLog(`You descend to floor ${this.depth} of the dungeon.`));
+    }
     this.emitChange();
   }
 
   ascend(): void {
     if (this.heroDead) return;
+    const before = this.depth;
     this.dungeon.ascend();
     this.enterFloor();
+    if (this.depth !== before) {
+      this.pushLog(highlightLog(`You return to floor ${this.depth} of the dungeon.`));
+    }
     this.emitChange();
   }
 

@@ -61,6 +61,35 @@ const contentWithFastWeapon = ContentDatabase.fromRaw(
   [{ id: "tester", name: "Tester", maxHealth: 20, strength: 15, sprite: "warrior", startingItems: ["short_sword"] }],
 );
 
+const contentWithLevelUpEnemy = ContentDatabase.fromRaw(
+  [
+    {
+      id: "training_dummy",
+      name: "Training Dummy",
+      maxHealth: 1,
+      speed: 1,
+      vision: 0,
+      accuracy: 0,
+      evasion: 0,
+      damageMin: 0,
+      damageMax: 0,
+      armor: 0,
+      spawnWeight: 1,
+      minDepth: 1,
+      expReward: 10,
+    },
+  ],
+  [
+    {
+      id: "short_sword",
+      name: "Test Blade",
+      type: "weapon",
+      damageMin: 10,
+      damageMax: 10,
+    },
+  ],
+);
+
 const contentWithHeavyStarter = ContentDatabase.fromRaw(
   [],
   [
@@ -143,6 +172,8 @@ describe("GameWorld", () => {
     expect(w.tryMoveHero(-dx, -dy)).toBe(true);
     expect(w.heroPos).toBe(start);
     expect(w.isOpenDoor(door)).toBe(false);
+    expect(w.log).not.toContain("You open the door.");
+    expect(w.log).not.toContain("You close the door.");
   });
 
   it("is deterministic: same seed -> same hero & enemy placement", () => {
@@ -254,7 +285,7 @@ describe("GameWorld", () => {
 
     expect(w.level.itemAt(w.heroPos)).toBeNull();
     expect(w.inventory.all.some((item) => item.defId === "potion_strength")).toBe(true);
-    expect(w.log.at(-1)).toBe("You pick up Potion of Strength.");
+    expect(w.log.at(-1)).toBe("++ You picked up: Potion of Strength.");
 
     // With no other actors on the queue, fixTime normalizes the hero back to 0;
     // the successful pickup/log/inventory mutation proves the turn resolved.
@@ -353,6 +384,29 @@ describe("GameWorld", () => {
     expect(w.enemies.length).toBe(0);
     expect(w.heroExperience).toBe(1);
     expect(w.heroLevel).toBe(1);
+  });
+
+  it("logs level up and enemy defeat events with positive tone", () => {
+    const base = new GameWorld("WORLD-LEVEL-LOG", contentWithLevelUpEnemy, {
+      enemyCount: 1,
+    });
+    const adjacent = base.grid
+      .neighbours4(base.heroPos)
+      .find((cell) => base.grid.isWalkable(cell));
+    expect(adjacent).toBeDefined();
+
+    const snapshot = base.snapshot();
+    snapshot.enemies[0]!.pos = adjacent!;
+    snapshot.enemies[0]!.stats.hp = 1;
+    const w = GameWorld.fromSnapshot(snapshot, contentWithLevelUpEnemy);
+
+    const dx = w.grid.xOf(adjacent!) - w.grid.xOf(w.heroPos);
+    const dy = w.grid.yOf(adjacent!) - w.grid.yOf(w.heroPos);
+    expect(w.tryMoveHero(dx, dy)).toBe(true);
+
+    expect(w.heroLevel).toBe(2);
+    expect(w.log).toContain("++ Level up! +Accuracy, +Evasion, +5 HP!");
+    expect(w.log).toContain("++ Defeated the Training Dummy.");
   });
 
   it("blocks EXP from enemies below the hero's current level", () => {
@@ -487,7 +541,7 @@ describe("GameWorld", () => {
 
     const heroTurn = w.snapshot().queue.actors.find((actor) => actor.id === "hero");
     expect(heroTurn?.time).toBe(0);
-    expect(w.log.at(-1)).toBe("No clear shot.");
+    expect(w.log.at(-1)).toBe("** No clear shot.");
   });
 
   it("fires onHeroDamaged with the correct payload when a monster lands a hit", () => {

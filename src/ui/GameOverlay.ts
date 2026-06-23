@@ -9,6 +9,7 @@ import {
 import type { SpriteKey, SpriteSheetAssets } from "@/render/AssetLoader";
 
 type InventoryTab = "all" | "equipment" | "consumables";
+type LogTone = "neutral" | "positive" | "negative" | "warning" | "highlight";
 
 export interface OverlayState {
   seed: string;
@@ -98,7 +99,7 @@ export class GameOverlay {
       <section class="ui-hud ui-panel" data-ui-panel></section>
       <nav class="utility-bar" data-ui-panel aria-label="Hero and help"></nav>
       <button class="attack-indicator" data-ui-panel type="button" aria-label="Attack" title="Attack" hidden></button>
-      <section class="ui-log" data-ui-panel aria-live="polite"></section>
+      <section class="ui-log" aria-live="polite"></section>
       <nav class="action-bar" data-ui-panel aria-label="Game actions"></nav>
       <section class="inventory-modal ui-panel" data-ui-panel hidden></section>
       <section class="hero-modal" data-ui-panel hidden></section>
@@ -383,9 +384,10 @@ export class GameOverlay {
     const lines = this.logLines.slice(-8);
     this.logBox.replaceChildren();
     for (const line of lines) {
+      const parsed = parseLogLine(line);
       const row = document.createElement("div");
-      row.className = "log-line";
-      row.textContent = line;
+      row.className = `log-line log-line-${parsed.tone}`;
+      row.textContent = parsed.text;
       this.logBox.append(row);
     }
   }
@@ -641,7 +643,7 @@ export class GameOverlay {
 
     const banner = document.createElement("div");
     banner.className = "go-banner go-banner-fallback";
-    const bannerScale = Math.min(4, Math.max(2.25, (window.innerWidth - 48) / 128));
+    const bannerScale = Math.min(4, Math.max(2.25, (this.root.clientWidth - 48) / 128));
     const bannerStyle = this.assets?.cssStyleForSprite("gameOverBanner", bannerScale);
     if (bannerStyle) {
       banner.classList.remove("go-banner-fallback");
@@ -969,4 +971,14 @@ function itemLongDescription(item: InventoryItem): string {
 
 function portraitForHero(sprite: SpriteKey): SpriteKey {
   return sprite === "mageHero" ? "magePortrait" : "heroPortrait";
+}
+
+function parseLogLine(line: string): { text: string; tone: LogTone } {
+  const prefix = line.slice(0, 2);
+  const text = line.slice(2).trimStart();
+  if (prefix === "++") return { text, tone: "positive" };
+  if (prefix === "--") return { text, tone: "negative" };
+  if (prefix === "**") return { text, tone: "warning" };
+  if (prefix === "@@") return { text, tone: "highlight" };
+  return { text: line, tone: "neutral" };
 }

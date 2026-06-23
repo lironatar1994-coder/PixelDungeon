@@ -11,6 +11,7 @@ Antigravity AI
 
 # Work Guidance
 - Implement camera center focus clamped to map boundaries.
+- Keep the desktop game canvas width-capped and centered on the black page stage; derive render buffer size from the canvas CSS bounds, not the full browser window.
 - Support responsive viewport scale/zoom.
 - Keep camera panning render-only, but re-lock follow to the hero when the hero participates in combat.
 - Support real-time actor idle squashing and tween animations.

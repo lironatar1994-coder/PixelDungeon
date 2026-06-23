@@ -713,11 +713,12 @@ async function boot(): Promise<void> {
   }
 
   function currentViewport(current: GameWorld) {
+    const rect = (canvas as HTMLCanvasElement).getBoundingClientRect();
     const cx = cameraFocusX !== null ? cameraFocusX : current.grid.xOf(current.heroPos) + 0.5;
     const cy = cameraFocusY !== null ? cameraFocusY : current.grid.yOf(current.heroPos) + 0.5;
     return computeMapSceneViewport(
-      window.innerWidth,
-      window.innerHeight,
+      rect.width,
+      rect.height,
       current.grid,
       { x: cx, y: cy },
       zoomMultiplier,

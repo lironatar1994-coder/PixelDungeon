@@ -12,6 +12,7 @@ Antigravity AI
 
 # Work Guidance
 - Use Mulberry32 for all seeded RNG operations.
+- Use SPD-style log tone prefixes for player-facing log entries: `++` positive, `--` negative, `**` warning, and `@@` highlight. Keep ordinary door open/close actions out of the log.
 - Ensure proper object lifecycles with `.destroy()` or `.dispose()` to avoid event bus and queue leaks.
 - Keep components small and focused following the Lego Brick Strategy.
 

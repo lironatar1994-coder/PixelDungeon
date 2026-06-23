@@ -11,11 +11,12 @@
   --spd-button-frame-red: url("../public/assets/chrome_button_red.png");
   --spd-status-pane: url("../public/assets/status_pane.png");
   --spd-interface-icons: url("../public/assets/icons.png");
+  --game-frame-width: min(100vw, 760px);
   --action-size: 56px;
   --action-gap: 8px;
 }
 
-/* Reset margins and let the canvas own the entire viewport. */
+/* Reset margins and let the game frame sit on a black stage. */
 html,
 body {
   margin: 0;
@@ -27,10 +28,11 @@ body {
 
 #game {
   position: fixed;
-  inset: 0;
-  width: 100vw;
-  height: 100vh;
+  inset: 0 auto 0 50%;
+  width: var(--game-frame-width);
+  height: 100dvh;
   display: block;
+  transform: translateX(-50%);
   /* Crisp pixels for the future tile/sprite art (no blurry upscaling). */
   image-rendering: pixelated;
   touch-action: none; /* Directive 7: stop the browser hijacking touch input. */
@@ -38,8 +40,11 @@ body {
 
 #ui-overlay {
   position: fixed;
-  inset: 0;
+  inset: 0 auto 0 50%;
+  width: var(--game-frame-width);
+  height: 100dvh;
   z-index: 5;
+  transform: translateX(-50%);
   pointer-events: none;
   color: #f0eadb;
   font-family: "SPD Pixel", "Trebuchet MS", "Segoe UI", sans-serif;
@@ -625,20 +630,25 @@ body {
   position: absolute;
   left: max(10px, env(safe-area-inset-left));
   bottom: calc(64px + env(safe-area-inset-bottom));
-  width: min(420px, calc(100vw - 20px));
+  width: min(520px, calc(100% - 20px));
   max-height: 92px;
-  overflow-y: auto;
+  overflow: hidden;
   padding: 0;
   border: 0;
   pointer-events: none;
+  user-select: none;
   background: transparent;
   box-shadow: none;
   backdrop-filter: none;
 }
 
+.ui-log * {
+  pointer-events: none;
+}
+
 .log-line {
   margin: 3px 0;
-  color: #fff6c5;
+  color: #e5dcc5;
   font-size: 12px;
   line-height: 1.2;
   opacity: 0.36;
@@ -648,8 +658,24 @@ body {
     1px -1px 0 #000;
 }
 
-.log-line:nth-child(even) {
-  color: #f7d45c;
+.log-line-positive {
+  color: #ffff66;
+}
+
+.log-line-negative {
+  color: #ff7868;
+}
+
+.log-line-warning {
+  color: #ffb547;
+}
+
+.log-line-highlight {
+  color: #79e4ff;
+}
+
+.log-line-neutral {
+  color: #e5dcc5;
 }
 
 .log-line:nth-last-child(4) {
@@ -1383,6 +1409,10 @@ body {
 }
 
 @media (max-width: 620px) {
+  :root {
+    --game-frame-width: 100vw;
+  }
+
   #main-menu {
     padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right))
       max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));

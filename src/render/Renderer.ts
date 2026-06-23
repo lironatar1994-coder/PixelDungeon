@@ -3,7 +3,7 @@
  *
  * Responsibilities:
  *  - Own the <canvas> and its 2D context.
- *  - Keep the drawing buffer matched to the window size AND device pixel ratio
+ *  - Keep the drawing buffer matched to the canvas CSS size AND device pixel ratio
  *    (DPR) so the picture is sharp and re-scales on every window resize.
  *  - Each clock tick: clear the screen and hand the context to the active
  *    "scene" to paint. The Renderer itself knows nothing about dungeons or
@@ -58,13 +58,14 @@ export class Renderer {
   }
 
   /**
-   * Resize the backing buffer to window size * DPR, then scale the context so
+   * Resize the backing buffer to canvas CSS size * DPR, then scale the context so
    * scenes can draw using simple CSS-pixel coordinates regardless of density.
    */
   private resize = (): void => {
+    const rect = this.canvas.getBoundingClientRect();
     this.dpr = window.devicePixelRatio || 1;
-    this.width = window.innerWidth;
-    this.height = window.innerHeight;
+    this.width = Math.max(1, Math.round(rect.width || window.innerWidth));
+    this.height = Math.max(1, Math.round(rect.height || window.innerHeight));
 
     this.canvas.width = Math.floor(this.width * this.dpr);
     this.canvas.height = Math.floor(this.height * this.dpr);
