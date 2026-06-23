@@ -14,6 +14,8 @@ import type { Grid } from "@/core/grid/Grid";
 export type TapPlan<E> =
   | { kind: "none" }
   | { kind: "travel"; cell: number }
+  | { kind: "openDoor"; cell: number }
+  | { kind: "pickUp"; cell: number }
   /** A visible enemy is adjacent — bump-attack it now. */
   | { kind: "attack"; enemy: E }
   /** A visible enemy is out of melee range — auto-walk toward it. */
@@ -25,6 +27,8 @@ export interface TapView<E extends { pos: number }> {
   enemies: readonly E[];
   isAlive: (enemy: E) => boolean;
   isVisible: (cell: number) => boolean;
+  isClosedDoor?: (cell: number) => boolean;
+  hasGroundItem?: (cell: number) => boolean;
 }
 
 /** Chebyshev distance: melee range includes orthogonal and diagonal neighbours. */
@@ -50,6 +54,16 @@ export function planTap<E extends { pos: number }>(
     return chebyshev(view.grid, view.heroPos, cell) === 1
       ? { kind: "attack", enemy }
       : { kind: "approach", enemy };
+  }
+
+  // 2. Closed doors are interactions, not generic walk targets.
+  if (view.isClosedDoor?.(cell)) {
+    return { kind: "openDoor", cell };
+  }
+
+  // 3. Ground items become pickup actions. The executor may walk there first.
+  if (view.hasGroundItem?.(cell)) {
+    return { kind: "pickUp", cell };
   }
 
   // No (visible) enemy there: walk to the tile if it's somewhere we can stand.

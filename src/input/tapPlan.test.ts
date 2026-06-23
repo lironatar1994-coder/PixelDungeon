@@ -13,6 +13,7 @@ function makeView(
   heroPos: number,
   enemies: MockEnemy[],
   visible: Set<number>,
+  extras: Partial<Pick<TapView<MockEnemy>, "isClosedDoor" | "hasGroundItem">> = {},
 ): TapView<MockEnemy> {
   return {
     grid,
@@ -20,6 +21,7 @@ function makeView(
     enemies,
     isAlive: (e) => e.alive,
     isVisible: (cell) => visible.has(cell),
+    ...extras,
   };
 }
 
@@ -83,5 +85,42 @@ describe("planTap (touch-to-attack targeting)", () => {
     const enemy: MockEnemy = { pos: grid.cell(5, 4), alive: false };
     const plan = planTap(makeView(grid, hero, [enemy], allVisible), enemy.pos);
     expect(plan).toEqual({ kind: "travel", cell: enemy.pos });
+  });
+
+  it("plans closed-door interaction before generic travel", () => {
+    const door = grid.cell(4, 5);
+    const plan = planTap(
+      makeView(grid, hero, [], allVisible, {
+        isClosedDoor: (cell) => cell === door,
+      }),
+      door,
+    );
+
+    expect(plan).toEqual({ kind: "openDoor", cell: door });
+  });
+
+  it("plans pickup before generic travel", () => {
+    const item = grid.cell(4, 5);
+    const plan = planTap(
+      makeView(grid, hero, [], allVisible, {
+        hasGroundItem: (cell) => cell === item,
+      }),
+      item,
+    );
+
+    expect(plan).toEqual({ kind: "pickUp", cell: item });
+  });
+
+  it("keeps visible enemies higher priority than door or item metadata", () => {
+    const enemy: MockEnemy = { pos: grid.cell(5, 4), alive: true };
+    const plan = planTap(
+      makeView(grid, hero, [enemy], allVisible, {
+        isClosedDoor: (cell) => cell === enemy.pos,
+        hasGroundItem: (cell) => cell === enemy.pos,
+      }),
+      enemy.pos,
+    );
+
+    expect(plan).toEqual({ kind: "attack", enemy });
   });
 });

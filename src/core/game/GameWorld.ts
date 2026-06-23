@@ -339,6 +339,16 @@ export class GameWorld {
       this.level.openDoors.has(cell);
   }
 
+  isClosedDoor(cell: number): boolean {
+    return this.grid.inBoundsCell(cell) &&
+      this.grid.get(cell) === Terrain.DOOR &&
+      !this.level.openDoors.has(cell);
+  }
+
+  hasGroundItem(cell: number): boolean {
+    return this.level.itemAt(cell) !== null;
+  }
+
   private isCellTransparent(cell: number): boolean {
     if (!this.grid.inBoundsCell(cell)) return false;
     if (this.grid.get(cell) === Terrain.DOOR) {

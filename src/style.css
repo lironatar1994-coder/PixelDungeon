@@ -62,146 +62,342 @@ body {
   position: fixed;
   inset: 0;
   z-index: 10;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+  display: grid;
+  place-items: center;
   width: 100vw;
+  height: 100vh;
   box-sizing: border-box;
-  padding: 20px;
+  padding: max(14px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right))
+    max(14px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
   color: #f0eadb;
   font-family: "SPD Pixel", "Trebuchet MS", "Segoe UI", sans-serif;
   text-shadow: 1px 1px 0 #000;
   -webkit-font-smoothing: none;
   font-smooth: never;
   background:
-    linear-gradient(180deg, rgba(4, 6, 7, 0.34), rgba(4, 6, 7, 0.94)),
-    radial-gradient(circle at 50% 42%, rgba(208, 169, 75, 0.18), transparent 36%),
-    repeating-linear-gradient(135deg, rgba(244, 211, 138, 0.08) 0 1px, transparent 1px 13px),
-    #07090a;
-  overflow-y: auto;
+    linear-gradient(180deg, rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.78)),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.65), transparent 18%, transparent 82%, rgba(0, 0, 0, 0.65)),
+    url("../public/assets/tiles_halls.png") 0 0 / 256px 256px,
+    #060707;
+  overflow: hidden;
   overflow-x: hidden;
 }
 
-.main-menu-panel {
-  width: min(560px, calc(100vw - 56px));
-  padding: 34px;
-  border: 14px solid transparent;
-  border-image: var(--spd-window-frame) 6 fill / 14px / 0 round;
-  background: transparent;
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.58);
+#main-menu::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.42), transparent 24%, rgba(0, 0, 0, 0.76)),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 4px);
+  pointer-events: none;
 }
 
-.main-menu-kicker {
-  margin-bottom: 8px;
-  color: #89c7b3;
-  font-size: 12px;
-  text-transform: uppercase;
+#main-menu::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  height: 34vh;
+  background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.88));
+  pointer-events: none;
 }
 
-.main-menu-title h1 {
-  margin: 0;
-  color: #f4d38a;
-  font-size: 46px;
-  line-height: 1.06;
-  letter-spacing: 1px;
+.main-menu-scene {
+  position: relative;
+  z-index: 1;
+  width: min(390px, calc(100vw - 24px));
+  min-height: min(610px, calc(100vh - 28px));
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: clamp(16px, 4vh, 28px);
+}
+
+.main-title-view {
+  width: 100%;
+  display: grid;
+  justify-items: center;
+  gap: clamp(18px, 5vh, 34px);
+}
+
+.main-title-header {
+  position: relative;
+  width: min(320px, 86vw);
+  min-height: clamp(150px, 31vh, 230px);
+  display: grid;
+  place-items: center;
+}
+
+.main-logo {
+  position: relative;
+  z-index: 2;
+  width: min(285px, 78vw);
+  min-height: 130px;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 2px;
+  color: #d7dbc1;
+  font-size: clamp(31px, 9vw, 52px);
+  line-height: 0.9;
+  letter-spacing: 0;
+  text-align: center;
   text-shadow:
-    0 0 14px rgba(122, 226, 156, 0.55),
-    0 0 30px rgba(122, 226, 156, 0.3),
-    2px 2px 0 #000;
+    2px 2px 0 #000,
+    -1px -1px 0 #525a42,
+    0 0 14px rgba(192, 219, 135, 0.24);
 }
 
-.main-menu-title p,
-.main-menu-note {
-  color: #a9b7aa;
+.main-logo::before {
+  content: "";
+  position: absolute;
+  inset: -12px -18px;
+  z-index: -1;
+  background: url("../public/assets/banners.png") 0 0 / 512px 256px no-repeat;
+  opacity: 0.22;
+  image-rendering: pixelated;
+  filter: saturate(0.8) brightness(1.2);
 }
 
-.main-menu-title p {
-  margin: 10px 0 0;
+.main-logo span:first-child {
+  transform: translateX(-10px);
 }
 
-.main-menu-actions {
+.main-logo span:last-child {
+  transform: translateX(7px);
+}
+
+.main-logo-glow {
+  position: absolute;
+  inset: 32px 20px auto;
+  height: 76px;
+  background: rgba(161, 196, 111, 0.09);
+  box-shadow:
+    0 0 26px rgba(199, 215, 134, 0.24),
+    inset 0 0 22px rgba(185, 211, 127, 0.12);
+  filter: blur(1px);
+}
+
+.main-torches {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.main-torches i {
+  position: absolute;
+  top: 58%;
+  width: 10px;
+  height: 18px;
+  background: #ee9d2e;
+  box-shadow:
+    0 0 0 2px #4b1a0c,
+    0 0 14px 5px rgba(255, 126, 28, 0.38);
+  image-rendering: pixelated;
+  animation: torch-flicker 0.8s steps(2, end) infinite;
+}
+
+.main-torches i:first-child {
+  left: 18%;
+}
+
+.main-torches i:last-child {
+  right: 18%;
+}
+
+@keyframes torch-flicker {
+  0%,
+  100% {
+    transform: translateY(0);
+    filter: brightness(1);
+  }
+  50% {
+    transform: translateY(-1px);
+    filter: brightness(1.22);
+  }
+}
+
+.main-menu-buttons {
+  width: min(316px, 88vw);
   display: grid;
-  gap: 10px;
-  margin: 30px 0 14px;
+  gap: 6px;
 }
 
-.class-select-panel,
-.history-panel {
-  margin: 14px 0;
-  padding-top: 12px;
-  border-top: 1px solid rgba(244, 211, 138, 0.2);
-}
-
-.class-select-panel h2,
-.history-panel h2 {
-  margin: 0 0 10px;
-  color: #f4d38a;
-  font-size: 18px;
-}
-
-.class-select-grid {
+.main-menu-button-row {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
 }
 
-.class-card {
-  min-height: 116px;
+.menu-button {
+  min-height: 34px;
   border: 8px solid transparent;
   border-image: var(--spd-button-frame-grey) 4 fill / 8px / 0 stretch;
-  padding: 10px;
+  padding: 6px 10px 7px;
+  color: #f1ebd3;
+  background: transparent;
+  cursor: pointer;
+  font: 14px "SPD Pixel", "Trebuchet MS", "Segoe UI", sans-serif;
+  text-align: center;
+  text-shadow: 1px 1px 0 #000;
+  image-rendering: pixelated;
+}
+
+.menu-button-primary {
+  min-height: 38px;
+  color: #fff4b8;
+  font-size: 15px;
+  border-image-source: var(--spd-button-frame);
+}
+
+.menu-button-muted {
+  color: #b8b8a4;
+}
+
+.menu-button:hover,
+.menu-button:focus-visible {
+  filter: brightness(1.22);
+  outline: none;
+}
+
+.menu-button:active {
+  transform: translateY(1px);
+}
+
+.main-menu-status {
+  min-height: 16px;
+  margin: 3px 0 0;
+  color: #b6b496;
+  font-size: 11px;
+  text-align: center;
+}
+
+.main-subwindow {
+  width: min(430px, calc(100vw - 28px));
+  max-height: min(560px, calc(100vh - 32px));
+  box-sizing: border-box;
+  border: 14px solid transparent;
+  border-image: var(--spd-window-frame) 6 fill / 14px / 0 round;
+  padding: 12px;
+  overflow: hidden;
+  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.7);
+}
+
+.main-subwindow-header {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: start;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.main-subwindow h2 {
+  margin: 0;
+  color: #fff4b8;
+  font-size: 19px;
+}
+
+.main-subwindow-header p {
+  margin: 4px 0 0;
+  color: #b6b496;
+  font-size: 11px;
+}
+
+.main-back-button {
+  min-height: 30px;
+  min-width: 70px;
+}
+
+.hero-select-list {
+  display: grid;
+  gap: 7px;
+}
+
+.hero-select-card {
+  width: 100%;
+  min-height: 74px;
+  display: grid;
+  grid-template-columns: 42px 1fr;
+  align-items: center;
+  gap: 10px;
+  border: 8px solid transparent;
+  border-image: var(--spd-button-frame-grey) 4 fill / 8px / 0 stretch;
+  padding: 7px 9px;
   color: #f5ebd0;
   background: transparent;
   cursor: pointer;
   text-align: left;
-  font: 13px "SPD Pixel", "Trebuchet MS", "Segoe UI", sans-serif;
+  font: 12px "SPD Pixel", "Trebuchet MS", "Segoe UI", sans-serif;
 }
 
-.class-card strong,
-.class-card span,
-.class-card small,
-.history-row strong,
-.history-row span,
-.history-row small {
-  display: block;
-}
-
-.class-card strong {
-  color: #fff1b7;
-  font-size: 16px;
-}
-
-.class-card span {
-  margin-top: 7px;
-  color: #89c7b3;
-}
-
-.class-card small {
-  margin-top: 8px;
-  color: #a9b7aa;
-  line-height: 1.35;
-}
-
-.class-card:hover {
+.hero-select-card:hover,
+.hero-select-card:focus-visible {
   filter: brightness(1.18);
+  outline: none;
+}
+
+.hero-select-portrait {
+  width: 36px;
+  height: 45px;
+  justify-self: center;
+  image-rendering: pixelated;
+  background-repeat: no-repeat;
+  background-size: auto 45px;
+  filter: drop-shadow(2px 2px 0 #000);
+}
+
+.hero-warrior .hero-select-portrait {
+  background-image: url("../public/assets/warrior.png");
+  background-position: 0 0;
+}
+
+.hero-mage .hero-select-portrait {
+  background-image: url("../public/assets/mage.png");
+  background-position: 0 0;
+}
+
+.hero-select-copy {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.hero-select-copy strong {
+  color: #fff4b8;
+  font-size: 15px;
+}
+
+.hero-select-copy span {
+  color: #8fc68d;
+}
+
+.hero-select-copy small {
+  color: #b6b496;
+  line-height: 1.35;
 }
 
 .history-list {
   display: grid;
-  gap: 8px;
-  max-height: min(260px, 36vh);
-  overflow: auto;
+  gap: 7px;
+  max-height: min(390px, calc(100vh - 176px));
+  overflow-y: auto;
   padding-right: 4px;
 }
 
 .history-row {
   border: 8px solid transparent;
   border-image: var(--spd-button-frame) 4 fill / 8px / 0 stretch;
-  padding: 8px 10px;
+  padding: 7px 9px;
+}
+
+.history-row strong,
+.history-row span,
+.history-row small {
+  display: block;
 }
 
 .history-row strong {
-  color: #fff1b7;
+  color: #fff4b8;
   font-size: 13px;
 }
 
@@ -213,36 +409,19 @@ body {
 
 .history-row small,
 .history-empty {
-  color: #a9b7aa;
+  color: #b6b496;
   font-size: 11px;
 }
 
-.menu-button {
-  border: 8px solid transparent;
-  border-image: var(--spd-button-frame) 4 fill / 8px / 0 stretch;
-  padding: 9px 14px;
-  color: #f5ebd0;
-  background: transparent;
-  cursor: pointer;
-  font: 15px "SPD Pixel", "Trebuchet MS", "Segoe UI", sans-serif;
-}
-
-.menu-button-primary {
-  color: #fff1b7;
-  border-image-source: var(--spd-button-frame-grey);
-}
-
-.menu-button:hover {
-  filter: brightness(1.18);
-}
-
-.menu-button-primary:hover {
-  filter: brightness(1.24);
-}
-
-.main-menu-note {
-  margin: 0;
-  font-size: 12px;
+.main-menu-footer {
+  position: absolute;
+  right: max(8px, env(safe-area-inset-right));
+  bottom: max(6px, env(safe-area-inset-bottom));
+  z-index: 1;
+  display: flex;
+  gap: 8px;
+  color: #888;
+  font-size: 10px;
 }
 
 .ui-hud {
@@ -1013,20 +1192,44 @@ body {
 
 @media (max-width: 620px) {
   #main-menu {
-    padding: 16px;
+    padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right))
+      max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
   }
 
-  .main-menu-panel {
-    width: calc(100vw - 32px);
-    padding: 24px;
+  .main-menu-scene {
+    width: calc(100vw - 20px);
+    min-height: calc(100vh - 20px);
+    gap: 12px;
   }
 
-  .main-menu-title h1 {
-    font-size: 36px;
+  .main-title-header {
+    min-height: clamp(122px, 28vh, 170px);
   }
 
-  .class-select-grid {
+  .main-logo {
+    min-height: 104px;
+    font-size: clamp(30px, 11vw, 43px);
+  }
+
+  .main-torches i {
+    top: 61%;
+  }
+
+  .main-menu-buttons {
+    width: min(314px, calc(100vw - 34px));
+  }
+
+  .main-subwindow {
+    width: calc(100vw - 20px);
+    padding: 9px;
+  }
+
+  .main-subwindow-header {
     grid-template-columns: 1fr;
+  }
+
+  .main-back-button {
+    justify-self: start;
   }
 
   .ui-hud {

@@ -42,7 +42,7 @@ import type { Enemy } from "@/core/actors/Enemy";
 import { loadContentDatabase } from "@/core/data/loadContent";
 import { SaveManager } from "@/core/save/SaveManager";
 import { HistoryManager } from "@/core/save/HistoryManager";
-import { findPath } from "@/core/pathfinding/AStar";
+import { DistanceMap } from "@/core/pathfinding/DistanceMap";
 import { Terrain } from "@/core/grid/terrain";
 import { planTap } from "@/input/tapPlan";
 import { InputManager } from "@/input/InputManager";
@@ -52,6 +52,7 @@ import { MainMenu } from "@/ui/MainMenu";
 
 type AppState = "MainMenu" | "Playing";
 type TargetingMode = "ranged" | "look";
+type AutoWalkIntent = "travel" | "pickup" | "door";
 const AUTO_WALK_STEP_SECONDS = 0.08;
 const WHEEL_ZOOM_STEP = 0.0015;
 const PINCH_ZOOM_SENSITIVITY = 1;
@@ -138,6 +139,8 @@ async function boot(): Promise<void> {
   let selectedCell: number | null = null;
   let targetingMode: TargetingMode | null = null;
   let autoPath: number[] = [];
+  let autoPathTarget: number | null = null;
+  let autoPathIntent: AutoWalkIntent = "travel";
   // When set, travel is in "approach an enemy" mode and stops once adjacent;
   // when null, travel follows `autoPath` to an empty tile.
   let autoTarget: Enemy | null = null;
@@ -410,14 +413,13 @@ async function boot(): Promise<void> {
 
   function heroDistanceTo(cell: number): number {
     const current = world!;
-    return (
-      Math.abs(current.grid.xOf(current.heroPos) - current.grid.xOf(cell)) +
-      Math.abs(current.grid.yOf(current.heroPos) - current.grid.yOf(cell))
-    );
+    return chebyshevDistance(current, current.heroPos, cell);
   }
 
   function cancelAutoWalk(): void {
     autoPath = [];
+    autoPathTarget = null;
+    autoPathIntent = "travel";
     autoTarget = null;
     autoWalkKnownHostileIds.clear();
     autoWalkElapsed = 0;
@@ -449,7 +451,7 @@ async function boot(): Promise<void> {
     };
   }
 
-  function startAutoWalk(target: number): void {
+  function startAutoWalk(target: number, intent: AutoWalkIntent = "travel"): void {
     if (!world) return;
     const current = world;
     if (target === current.heroPos || !current.grid.isWalkable(target)) return;
@@ -458,14 +460,17 @@ async function boot(): Promise<void> {
     if (!path || path.length < 2) return; // no route, or already standing there
 
     autoPath = path.slice(1); // drop the hero's own cell; keep the steps ahead
+    autoPathTarget = target;
+    autoPathIntent = intent;
+    autoTarget = null;
     autoWalkKnownHostileIds = new Set(visibleHostiles().map(hostileId));
     autoWalkElapsed = AUTO_WALK_STEP_SECONDS; // take the first step next frame
   }
 
-  function handleTravelTap(target: number): void {
+  function handleTravelTap(target: number, intent: AutoWalkIntent = "travel"): void {
     if (!world) return;
     const resolvedTarget = resolveTravelTarget(world, target);
-    if (resolvedTarget !== null) startAutoWalk(resolvedTarget);
+    if (resolvedTarget !== null) startAutoWalk(resolvedTarget, intent);
   }
 
   function resolveTravelTarget(current: GameWorld, target: number): number | null {
@@ -479,16 +484,20 @@ async function boot(): Promise<void> {
     const targetX = grid.xOf(target);
     const targetY = grid.yOf(target);
     let best: { cell: number; distance: number; turns: number } | null = null;
+    const reachable = DistanceMap.build(grid, current.heroPos, {
+      passable: (cell) =>
+        cell === current.heroPos ||
+        (grid.isWalkable(cell) && !current.isOccupied(cell)),
+    });
 
     for (let cell = 0; cell < grid.length; cell++) {
       if (!isAvailableTravelCell(current, cell) || cell === current.heroPos) continue;
-      const path = findHeroPath(current, cell);
-      if (!path) continue;
+      if (!reachable.isReachable(cell)) continue;
 
       const dx = grid.xOf(cell) - targetX;
       const dy = grid.yOf(cell) - targetY;
       const distance = Math.hypot(dx, dy);
-      const turns = path.length - 1;
+      const turns = reachable.getDistance(cell);
       if (
         best === null ||
         distance < best.distance ||
@@ -506,12 +515,39 @@ async function boot(): Promise<void> {
   }
 
   function findHeroPath(current: GameWorld, target: number): number[] | null {
-    return findPath(current.grid, current.heroPos, target, {
-      neighbours: (cell) => current.grid.neighbours8(cell),
-      heuristic: (from, to) => chebyshevDistance(current, from, to),
+    const route = DistanceMap.build(current.grid, target, {
       passable: (cell) =>
         current.grid.isWalkable(cell) && (cell === target || !current.isOccupied(cell)),
     });
+    return route.pathFrom(current.heroPos);
+  }
+
+  function refreshAutoPath(current: GameWorld): boolean {
+    if (autoPathTarget === null) return false;
+    const path = findHeroPath(current, autoPathTarget);
+    if (!path || path.length < 2) {
+      cancelAutoWalk();
+      return false;
+    }
+    autoPath = path.slice(1);
+    return true;
+  }
+
+  function isAutoTargetStillValid(current: GameWorld): boolean {
+    if (autoPathTarget === null) return false;
+    if (!current.grid.inBoundsCell(autoPathTarget)) return false;
+    if (autoPathIntent === "pickup" && !current.hasGroundItem(autoPathTarget)) return false;
+    return current.grid.isWalkable(autoPathTarget);
+  }
+
+  function finishAutoWalk(current: GameWorld): void {
+    const intent = autoPathIntent;
+    const target = autoPathTarget;
+    cancelAutoWalk();
+    if (target === null || current.heroPos !== target) return;
+    if (intent === "pickup") {
+      if (current.tryPickUpItem()) playSfx("pickup");
+    }
   }
 
   function chebyshevDistance(current: GameWorld, from: number, to: number): number {
@@ -549,12 +585,28 @@ async function boot(): Promise<void> {
   }
 
   function stepTravel(current: GameWorld): void {
-    if (autoPath.length === 0) return;
+    if (autoPathTarget === null) return;
+    if (!isAutoTargetStillValid(current)) {
+      cancelAutoWalk();
+      return;
+    }
+    if (autoPath.length === 0) {
+      finishAutoWalk(current);
+      return;
+    }
     if (newVisibleHostileExists()) {
       cancelAutoWalk();
       return;
     }
-    const next = autoPath[0]!;
+    let next = autoPath[0]!;
+    if (
+      !current.grid.isWalkable(next) ||
+      (next !== autoPathTarget && current.isOccupied(next))
+    ) {
+      if (!refreshAutoPath(current)) return;
+      next = autoPath[0]!;
+    }
+    const wasClosedDoor = current.isClosedDoor(next);
     const dx = current.grid.xOf(next) - current.grid.xOf(current.heroPos);
     const dy = current.grid.yOf(next) - current.grid.yOf(current.heroPos);
     const moved = current.tryMoveHero(dx, dy);
@@ -565,8 +617,9 @@ async function boot(): Promise<void> {
       cancelAutoWalk();
       return;
     }
+    if (wasClosedDoor) playSfx("door");
     autoPath.shift();
-    if (autoPath.length === 0) cancelAutoWalk();
+    if (autoPath.length === 0) finishAutoWalk(current);
   }
 
   function stepApproach(current: GameWorld, target: Enemy): void {
@@ -587,12 +640,11 @@ async function boot(): Promise<void> {
     }
 
     // Re-path toward the target's CURRENT cell each step (it may have moved).
-    const path = findPath(current.grid, current.heroPos, target.pos, {
-      neighbours: (cell) => current.grid.neighbours8(cell),
-      heuristic: (from, to) => chebyshevDistance(current, from, to),
+    const route = DistanceMap.build(current.grid, target.pos, {
       passable: (cell) =>
         current.grid.isWalkable(cell) && (cell === target.pos || !current.isOccupied(cell)),
     });
+    const path = route.pathFrom(current.heroPos);
     if (!path || path.length < 2) {
       cancelAutoWalk();
       return;
@@ -682,6 +734,8 @@ async function boot(): Promise<void> {
         enemies: current.enemies,
         isAlive: (enemy) => enemy.stats.alive,
         isVisible: (c) => current.fov.visible.has(c),
+        isClosedDoor: (c) => current.isClosedDoor(c),
+        hasGroundItem: (c) => current.hasGroundItem(c),
       },
       cell,
     );
@@ -691,6 +745,12 @@ async function boot(): Promise<void> {
         break;
       case "approach":
         startAttackWalk(plan.enemy);
+        break;
+      case "openDoor":
+        handleTravelTap(plan.cell, "door");
+        break;
+      case "pickUp":
+        handleTravelTap(plan.cell, "pickup");
         break;
       case "travel":
         handleTravelTap(plan.cell);

@@ -850,3 +850,25 @@ same defender, and draw the physical-damage icon from SPD's `text_icons.png`
 via **`AssetLoader`** ([src/render/AssetLoader.ts](src/render/AssetLoader.ts)).
 All of this remains render/UI-only and listens to the existing
 `combat:strike` EventBus event.
+
+### Phase 18 - Authentic Pathfinding & Interaction COMPLETE
+Added an SPD-style uniform 8-way distance map in **`DistanceMap`**
+([src/core/pathfinding/DistanceMap.ts](src/core/pathfinding/DistanceMap.ts)).
+It floods outward from the destination, treats diagonals as one step, and
+returns the next downhill step using deterministic Pixel Dungeon-like
+tie-breaking; this gives hero travel the original game's route feel while
+keeping the older A* available for other use cases.
+
+**`main.ts`** ([src/main.ts](src/main.ts)) now uses cached distance-map paths
+for hero autowalk and tap-to-approach, recalculating only when the cached next
+step becomes blocked or a new target is tapped. Shadow/wall taps also use one
+hero-rooted distance map to pick the nearest reachable fallback tile instead
+of running one path search per candidate.
+
+Smart tap semantics now live in the pure **`tapPlan`**
+([src/input/tapPlan.ts](src/input/tapPlan.ts)): visible enemy first, closed
+door second, ground item third, generic travel last. **`GameWorld`**
+([src/core/game/GameWorld.ts](src/core/game/GameWorld.ts)) exposes read-only
+`isClosedDoor` and `hasGroundItem` predicates so the browser orchestrator can
+issue existing core intents without inspecting mutable level details directly.
+Focused tests cover distance-map routing and tap priority.
