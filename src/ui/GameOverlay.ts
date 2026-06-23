@@ -225,7 +225,7 @@ export class GameOverlay {
     topRow.className = "hud-top-row";
     const depth = document.createElement("div");
     depth.className = "depth-pill";
-    depth.textContent = `Depth ${state.depth}`;
+    depth.textContent = String(state.depth);
     topRow.append(depth);
 
     const inSight = state.enemiesInSight.length;
