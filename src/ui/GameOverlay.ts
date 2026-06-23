@@ -7,6 +7,7 @@ export interface OverlayState {
   depth: number;
   enemiesInSight: Array<{ name: string; hp: number; maxHealth: number; state: string }>;
   attackTarget: { name: string; sprite: SpriteKey } | null;
+  pickupTarget: { name: string; sprite: SpriteKey } | null;
   hero: {
     hp: number;
     maxHealth: number;
@@ -334,8 +335,16 @@ export class GameOverlay {
   }
 
   private renderAttackIndicator(state: OverlayState): void {
-    const target = state.attackTarget;
+    const target = state.attackTarget ?? state.pickupTarget;
+    const isPickup = state.attackTarget === null && state.pickupTarget !== null;
     this.attackIndicator.hidden = target === null || !state.hero.alive;
+    this.attackIndicator.classList.toggle("attack-indicator-pickup", isPickup);
+    this.attackIndicator.setAttribute("aria-label", isPickup ? "Pick up" : "Attack");
+    this.attackIndicator.title = target
+      ? isPickup
+        ? `Pick up ${target.name}`
+        : `Attack ${target.name}`
+      : "Action";
     this.attackIndicator.replaceChildren();
     if (!target || !state.hero.alive) return;
 

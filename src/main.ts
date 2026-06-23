@@ -219,8 +219,9 @@ async function boot(): Promise<void> {
           hp: enemy.hp,
           maxHealth: enemy.maxHealth,
           state: enemy.state,
-        })),
+      })),
       attackTarget: attackTargetForOverlay(current),
+      pickupTarget: pickupTargetForOverlay(current),
       hero: {
         hp: current.heroStats.hp,
         maxHealth: current.heroStats.maxHealth,
@@ -298,8 +299,13 @@ async function boot(): Promise<void> {
         },
         quickAttack: () => {
           if (!world) return false;
-          const target = adjacentAttackTarget(world);
-          if (!target) return false;
+          const current = world;
+          const target = adjacentAttackTarget(current);
+          if (!target) {
+            const ok = current.tryPickUpItem();
+            if (ok) playSfx("pickup");
+            return ok;
+          }
           const ok = attackAdjacent(target);
           if (ok) playSfx("ui_click");
           return ok;
@@ -455,6 +461,18 @@ async function boot(): Promise<void> {
     return {
       name: target.name,
       sprite: assets.spriteForEnemy(target),
+    };
+  }
+
+  function pickupTargetForOverlay(current: GameWorld): { name: string; sprite: SpriteKey } | null {
+    if (adjacentAttackTarget(current)) return null;
+    const itemId = current.level.itemAt(current.heroPos);
+    if (itemId === null) return null;
+    const item = content.getItem(itemId);
+    if (!item) return { name: "item", sprite: "ration" };
+    return {
+      name: item.name,
+      sprite: assets.spriteForItem(item.id) ?? assets.spriteForItemType(item.type),
     };
   }
 

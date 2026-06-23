@@ -718,6 +718,10 @@ body {
   display: none;
 }
 
+.attack-indicator-pickup {
+  border-image: var(--spd-button-frame-grey) 2 fill / 8px / 0 stretch;
+}
+
 .attack-indicator:active {
   transform: translateY(1px);
 }
