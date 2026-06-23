@@ -69,4 +69,26 @@ describe("DistanceMap", () => {
     expect(map.getDistance(grid.cell(2, 2))).toBe(1);
     expect(map.getDistance(grid.cell(4, 2))).toBe(3);
   });
+
+  it("requires callers to allow the occupied start cell when flooding from the target", () => {
+    const grid = new Grid(5, 5, Terrain.FLOOR);
+    const hero = grid.cell(1, 1);
+    const target = grid.cell(3, 1);
+    const occupied = new Set<number>([hero]);
+
+    const blockedStart = DistanceMap.build(grid, target, {
+      passable: (cell) => grid.isWalkable(cell) && !occupied.has(cell),
+    });
+    expect(blockedStart.pathFrom(hero)).toBeNull();
+
+    const allowedStart = DistanceMap.build(grid, target, {
+      passable: (cell) =>
+        grid.isWalkable(cell) && (cell === hero || !occupied.has(cell)),
+    });
+    expect(allowedStart.pathFrom(hero)).toEqual([
+      hero,
+      grid.cell(2, 1),
+      target,
+    ]);
+  });
 });

@@ -517,7 +517,8 @@ async function boot(): Promise<void> {
   function findHeroPath(current: GameWorld, target: number): number[] | null {
     const route = DistanceMap.build(current.grid, target, {
       passable: (cell) =>
-        current.grid.isWalkable(cell) && (cell === target || !current.isOccupied(cell)),
+        current.grid.isWalkable(cell) &&
+        (cell === current.heroPos || cell === target || !current.isOccupied(cell)),
     });
     return route.pathFrom(current.heroPos);
   }
@@ -642,7 +643,8 @@ async function boot(): Promise<void> {
     // Re-path toward the target's CURRENT cell each step (it may have moved).
     const route = DistanceMap.build(current.grid, target.pos, {
       passable: (cell) =>
-        current.grid.isWalkable(cell) && (cell === target.pos || !current.isOccupied(cell)),
+        current.grid.isWalkable(cell) &&
+        (cell === current.heroPos || cell === target.pos || !current.isOccupied(cell)),
     });
     const path = route.pathFrom(current.heroPos);
     if (!path || path.length < 2) {
