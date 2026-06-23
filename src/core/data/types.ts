@@ -45,10 +45,18 @@ export interface EnemyDef {
   deathCauses?: EnemyDeathCauses;
 }
 
+export type ItemType = "weapon" | "armor" | "potion" | "scroll" | "gold" | "food" | "misc";
+
 export interface ItemDef {
+  /** Immutable template id, referenced by stateful ItemInstance.defId. */
   id: string;
   name: string;
-  type: string;
+  description: string;
+  type: ItemType;
+  /** SPD equipment tier. Used by upgrade scaling; defaults to 1 for equipment. */
+  tier?: number;
+  /** Render-layer sprite id/key. Kept as data only; core never loads images. */
+  sprite?: string;
   /** Weapon: minimum damage contributed when equipped. */
   damageMin?: number;
   /** Weapon: maximum damage contributed when equipped. */

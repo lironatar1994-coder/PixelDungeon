@@ -12,7 +12,7 @@
  * It is pure (no fetch, no DOM), so the corruption-handling is unit-tested
  * directly with plain objects.
  */
-import type { EnemyDef, HeroDef, ItemDef } from "./types";
+import type { EnemyDef, HeroDef, ItemDef, ItemType } from "./types";
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -23,6 +23,22 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 function str(rec: Record<string, unknown>, key: string, fallback: string): string {
   const v = rec[key];
   return typeof v === "string" && v.trim() !== "" ? v : fallback;
+}
+
+function itemType(rec: Record<string, unknown>): ItemType {
+  const raw = str(rec, "type", "misc");
+  if (
+    raw === "weapon" ||
+    raw === "armor" ||
+    raw === "potion" ||
+    raw === "scroll" ||
+    raw === "gold" ||
+    raw === "food" ||
+    raw === "misc"
+  ) {
+    return raw;
+  }
+  return "misc";
 }
 
 interface NumOpts {
@@ -133,7 +149,15 @@ export function parseItem(raw: unknown): ItemDef | null {
   }
   // Preserve type-specific fields, but guarantee the core three are clean and
   // coerce the known combat numbers (so the inventory can trust them).
-  const item: ItemDef = { ...rec, id, name: str(rec, "name", id), type: str(rec, "type", "misc") };
+  const item: ItemDef = {
+    ...rec,
+    id,
+    name: str(rec, "name", id),
+    description: str(rec, "description", ""),
+    type: itemType(rec),
+  };
+  if ("tier" in rec) item.tier = num(rec, "tier", 1, { int: true, min: 1, max: 5 });
+  if ("sprite" in rec) item.sprite = str(rec, "sprite", id);
   for (const key of ["damageMin", "damageMax", "defense", "heal", "strengthBonus"] as const) {
     if (key in rec) item[key] = num(rec, key, 0, { int: true, min: 0 });
   }

@@ -13,8 +13,14 @@
 import type { Grid } from "@/core/grid/Grid";
 import { Rect } from "@/core/grid/Rect";
 import type { Terrain } from "@/core/grid/terrain";
+import type { ItemInstance, ItemInstanceSnapshot } from "@/core/items/ItemInstance";
 
 export interface GroundItem {
+  cell: number;
+  item: ItemInstance;
+}
+
+export interface LegacyGroundItem {
   cell: number;
   itemId: string;
 }
@@ -29,7 +35,7 @@ export interface LevelSnapshot {
   entrance: number;
   exit: number;
   explored: number[];
-  groundItems: GroundItem[];
+  groundItems: Array<GroundItem | LegacyGroundItem>;
   openDoors: number[];
   floorVariants: [number, number][];
 }
@@ -57,8 +63,8 @@ export class Level {
   /** Static random visual variant (0, 1, or 2) assigned to each floor cell. */
   readonly floorVariants: Map<number, number>;
 
-  /** One loose item per cell. Values are content item ids, not live Item objects. */
-  private readonly groundItemByCell = new Map<number, string>();
+  /** One loose physical item instance per cell. */
+  private readonly groundItemByCell = new Map<number, ItemInstance>();
 
   constructor(params: {
     depth: number;
@@ -67,7 +73,7 @@ export class Level {
     rooms: Rect[];
     entrance: number;
     exit: number;
-    groundItems?: readonly GroundItem[];
+    groundItems?: ReadonlyArray<GroundItem | LegacyGroundItem>;
     openDoors?: Set<number>;
     floorVariants?: Map<number, number>;
   }) {
@@ -78,32 +84,32 @@ export class Level {
     this.entrance = params.entrance;
     this.exit = params.exit;
     for (const item of params.groundItems ?? []) {
-      this.placeGroundItem(item.cell, item.itemId);
+      this.placeGroundItem(item.cell, normalizeGroundItem(item, params.depth));
     }
     this.openDoors = params.openDoors ?? new Set();
     this.floorVariants = params.floorVariants ?? new Map();
   }
 
   get groundItems(): GroundItem[] {
-    return [...this.groundItemByCell.entries()].map(([cell, itemId]) => ({ cell, itemId }));
+    return [...this.groundItemByCell.entries()].map(([cell, item]) => ({ cell, item }));
   }
 
-  itemAt(cell: number): string | null {
+  itemAt(cell: number): ItemInstance | null {
     return this.groundItemByCell.get(cell) ?? null;
   }
 
-  placeGroundItem(cell: number, itemId: string): boolean {
+  placeGroundItem(cell: number, item: ItemInstance): boolean {
     if (!this.grid.inBoundsCell(cell) || !this.grid.isWalkable(cell)) return false;
     if (cell === this.entrance || cell === this.exit) return false;
     if (this.groundItemByCell.has(cell)) return false;
-    this.groundItemByCell.set(cell, itemId);
+    this.groundItemByCell.set(cell, { ...item });
     return true;
   }
 
-  takeGroundItem(cell: number): string | null {
-    const itemId = this.groundItemByCell.get(cell) ?? null;
-    if (itemId !== null) this.groundItemByCell.delete(cell);
-    return itemId;
+  takeGroundItem(cell: number): ItemInstance | null {
+    const item = this.groundItemByCell.get(cell) ?? null;
+    if (item !== null) this.groundItemByCell.delete(cell);
+    return item === null ? null : { ...item };
   }
 
   snapshot(): LevelSnapshot {
@@ -117,7 +123,10 @@ export class Level {
       entrance: this.entrance,
       exit: this.exit,
       explored: [...this.explored],
-      groundItems: this.groundItems,
+      groundItems: this.groundItems.map((ground) => ({
+        cell: ground.cell,
+        item: snapshotGroundItem(ground.item),
+      })),
       openDoors: [...this.openDoors],
       floorVariants: [...this.floorVariants.entries()],
     };
@@ -140,4 +149,32 @@ export class Level {
     }
     return level;
   }
+}
+
+function normalizeGroundItem(
+  ground: GroundItem | LegacyGroundItem,
+  depth: number,
+): ItemInstance {
+  if ("item" in ground) return { ...ground.item };
+  return {
+    uid: `legacy_ground_${depth}_${ground.cell}_${ground.itemId}`,
+    defId: ground.itemId,
+    level: 0,
+    levelKnown: true,
+    cursed: false,
+    cursedKnown: false,
+  };
+}
+
+function snapshotGroundItem(item: ItemInstance): ItemInstanceSnapshot {
+  const snapshot: ItemInstanceSnapshot = {
+    uid: item.uid,
+    defId: item.defId,
+    level: item.level,
+    levelKnown: item.levelKnown,
+    cursed: item.cursed,
+    cursedKnown: item.cursedKnown,
+  };
+  if (item.quantity !== undefined) snapshot.quantity = item.quantity;
+  return snapshot;
 }

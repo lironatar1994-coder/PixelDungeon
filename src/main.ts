@@ -24,6 +24,7 @@ import {
   detachMapCameraBy,
   drawMapScene,
   queueActorMoveAnimation,
+  queueActorDeathAnimation,
   queueCombatStrikeAnimation,
   queueItemPickupAnimation,
   snapMapCameraToHero,
@@ -34,10 +35,12 @@ import {
   clampZoomMultiplier,
   pixelToCell,
   MAP_TOP_INSET,
+  type Viewport,
 } from "@/render/viewport";
 import {
   GameWorld,
   type ActorMoveInfo,
+  type ActorDeathInfo,
   type CombatStrikeInfo,
   type HeroLevelUpInfo,
   type HeroDamagedInfo,
@@ -58,7 +61,7 @@ import { MainMenu } from "@/ui/MainMenu";
 type AppState = "MainMenu" | "Playing";
 type TargetingMode = "ranged" | "look";
 type AutoWalkIntent = "travel" | "pickup" | "door";
-const AUTO_WALK_STEP_SECONDS = 0.08;
+const AUTO_WALK_STEP_SECONDS = 0.18;
 const WHEEL_ZOOM_STEP = 0.0015;
 const PINCH_ZOOM_SENSITIVITY = 1;
 const CARDINAL_AND_DIAGONAL_KEYS: Record<string, [number, number]> = {
@@ -128,6 +131,7 @@ async function boot(): Promise<void> {
   const emitHeroDamaged = (info: HeroDamagedInfo) => bus.emit("hero:damaged", info);
   const emitCombatStrike = (info: CombatStrikeInfo) => bus.emit("combat:strike", info);
   const emitActorMove = (info: ActorMoveInfo) => bus.emit("actor:move", info);
+  const emitActorDeath = (info: ActorDeathInfo) => bus.emit("actor:death", info);
   const emitItemPickup = (info: ItemPickupInfo) => bus.emit("item:pickup", info);
   const emitHeroLevelUp = (info: HeroLevelUpInfo) => bus.emit("hero:levelup", info);
   // One shared callback set so every GameWorld (new / loaded / restarted) is
@@ -138,6 +142,7 @@ async function boot(): Promise<void> {
     onHeroDamaged: emitHeroDamaged,
     onCombatStrike: emitCombatStrike,
     onActorMove: emitActorMove,
+    onActorDeath: emitActorDeath,
     onItemPickup: emitItemPickup,
     onHeroLevelUp: emitHeroLevelUp,
   };
@@ -184,8 +189,8 @@ async function boot(): Promise<void> {
       })),
       groundItems: current.level.groundItems.map((ground) => ({
         cell: ground.cell,
-        itemId: ground.itemId,
-        type: content.getItem(ground.itemId)?.type,
+        itemId: ground.item.defId,
+        type: content.getItem(ground.item.defId)?.type,
       })),
       openDoors: current.level.openDoors,
       floorVariants: current.level.floorVariants,
@@ -245,8 +250,8 @@ async function boot(): Promise<void> {
       inventory: {
         capacity: current.inventory.capacity,
         items: current.inventory.all,
-        equippedWeaponId: current.inventory.equippedIn("weapon")?.id ?? null,
-        equippedArmorId: current.inventory.equippedIn("armor")?.id ?? null,
+        equippedWeaponId: current.inventory.equippedIn("weapon")?.uid ?? null,
+        equippedArmorId: current.inventory.equippedIn("armor")?.uid ?? null,
       },
       log: current.log,
     };
@@ -266,7 +271,7 @@ async function boot(): Promise<void> {
     seed = nextSeed;
     selectedCell = null;
     targetingMode = null;
-    snapMapCameraToHero();
+    snapMapCameraToHero(true);
     gameOverReported = false;
     clearCombatAnimations();
     cancelAutoWalk();
@@ -278,20 +283,20 @@ async function boot(): Promise<void> {
       bus,
       overlayState,
       {
-        equip: (itemId) => {
-          const ok = requireWorld(world).equipItem(itemId);
+        equip: (itemUid) => {
+          const ok = requireWorld(world).equipItem(itemUid);
           if (ok) playSfx("equip");
           return ok;
         },
-        consume: (itemId) => {
+        consume: (itemUid) => {
           const current = requireWorld(world);
-          const item = current.inventory.all.find((candidate) => candidate.id === itemId);
-          const ok = current.consumeItem(itemId);
+          const item = current.inventory.findByUid(itemUid);
+          const ok = current.consumeItem(itemUid);
           if (ok) playSfx(item?.type === "food" ? "eat" : "drink");
           return ok;
         },
-        drop: (itemId) => {
-          const ok = requireWorld(world).dropItem(itemId);
+        drop: (itemUid) => {
+          const ok = requireWorld(world).dropItem(itemUid);
           if (ok) playSfx("drop");
           return ok;
         },
@@ -302,6 +307,9 @@ async function boot(): Promise<void> {
         },
         quickAttack: () => {
           if (!world) return false;
+          targetingMode = null;
+          selectedCell = null;
+          snapMapCameraToHero();
           const current = world;
           const target = adjacentAttackTarget(current);
           if (!target) {
@@ -473,9 +481,9 @@ async function boot(): Promise<void> {
 
   function pickupTargetForOverlay(current: GameWorld): { name: string; sprite: SpriteKey } | null {
     if (adjacentAttackTarget(current)) return null;
-    const itemId = current.level.itemAt(current.heroPos);
-    if (itemId === null) return null;
-    const item = content.getItem(itemId);
+    const groundItem = current.level.itemAt(current.heroPos);
+    if (groundItem === null) return null;
+    const item = content.getItem(groundItem.defId);
     if (!item) return { name: "item", sprite: "ration" };
     return {
       name: item.name,
@@ -713,6 +721,33 @@ async function boot(): Promise<void> {
     );
   }
 
+  function actorCellAtScreen(current: GameWorld, vp: Viewport, px: number, py: number): number | null {
+    const worldX = (px - vp.offsetX) / vp.tileSize;
+    const worldY = (py - vp.offsetY) / vp.tileSize;
+    const candidates: Array<{ cell: number; priority: number; distance: number }> = [];
+    const addCandidate = (cell: number, priority: number): void => {
+      const centerX = current.grid.xOf(cell) + 0.5;
+      const centerY = current.grid.yOf(cell) + 0.5;
+      const dx = Math.abs(worldX - centerX);
+      const dy = Math.abs(worldY - centerY);
+      // SPD's CellSelector prioritizes sprites, but rejects clicks more than
+      // 12px from the tile center on a 16px tile. The slightly taller Y band
+      // accounts for bottom-anchored sprites whose heads live above the tile.
+      if (dx > 0.75 || dy > 1.05) return;
+      candidates.push({ cell, priority, distance: dx * dx + dy * dy });
+    };
+
+    for (const enemy of current.enemies) {
+      if (enemy.stats.alive && current.fov.visible.has(enemy.pos)) {
+        addCandidate(enemy.pos, 0);
+      }
+    }
+    addCandidate(current.heroPos, 1);
+
+    candidates.sort((a, b) => a.distance - b.distance || a.priority - b.priority);
+    return candidates[0]?.cell ?? null;
+  }
+
   const input = new InputManager(canvas, bus, {
     onWorldPan: (dx, dy) => {
       if (appState === "Playing" && targetingMode !== "ranged") {
@@ -730,7 +765,7 @@ async function boot(): Promise<void> {
     const current = world;
     cancelAutoWalk(); // a tap always interrupts whatever travel was happening
     const vp = currentViewport(current);
-    const cell = pixelToCell(vp, current.grid, x, y);
+    const cell = actorCellAtScreen(current, vp, x, y) ?? pixelToCell(vp, current.grid, x, y);
     selectedCell = cell;
 
     if (targetingMode !== null) {
@@ -860,7 +895,12 @@ async function boot(): Promise<void> {
       return;
     }
     gameOverReported = true;
-    const inventory = world.inventory.all.map((item) => item.id);
+    bus.emit("actor:death", {
+      actorId: "hero",
+      cell: world.heroPos,
+      name: world.heroSprite,
+    });
+    const inventory = world.inventory.all.map((item) => item.defId);
     historyManager.add({
       class: world.heroClassName,
       heroLevel: world.heroLevel,
@@ -892,6 +932,10 @@ async function boot(): Promise<void> {
 
   bus.on("actor:move", (event) => {
     queueActorMoveAnimation(event);
+  });
+
+  bus.on("actor:death", (event) => {
+    queueActorDeathAnimation(event);
   });
 
   bus.on("item:pickup", (event) => {
@@ -940,13 +984,13 @@ async function boot(): Promise<void> {
       world.descend();
       if (world.depth !== before) playSfx("descend");
       selectedCell = null;
-      snapMapCameraToHero();
+      snapMapCameraToHero(world.depth !== before);
     } else if (e.key === "<" || e.key === ",") {
       const before = world.depth;
       world.ascend();
       if (world.depth !== before) playSfx("descend");
       selectedCell = null;
-      snapMapCameraToHero();
+      snapMapCameraToHero(world.depth !== before);
     } else if (e.key === "q") {
       e.preventDefault();
       if (world.quaffHealing()) playSfx("drink");
@@ -1005,7 +1049,7 @@ function describeLookCell(world: GameWorld, cell: number): string {
 
   const item = world.level.groundItems.find((ground) => ground.cell === cell);
   if (item && world.fov.visible.has(cell)) {
-    return `You see ${item.itemId.replaceAll("_", " ")}.`;
+    return `You see ${item.item.defId.replaceAll("_", " ")}.`;
   }
 
   const terrain = world.grid.get(cell);

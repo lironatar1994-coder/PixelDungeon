@@ -3,7 +3,7 @@
     "id": "short_sword",
     "name": "Short Sword",
     "type": "weapon",
-    "tier": 1,
+    "tier": 2,
     "damageMin": 2,
     "damageMax": 6,
     "strengthRequired": 10,
@@ -24,7 +24,7 @@
     "id": "leather_armor",
     "name": "Leather Armor",
     "type": "armor",
-    "tier": 1,
+    "tier": 2,
     "defense": 2,
     "strengthRequired": 10,
     "description": "Light protection that won't slow you down."

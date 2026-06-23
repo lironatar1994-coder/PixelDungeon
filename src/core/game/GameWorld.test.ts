@@ -68,6 +68,7 @@ const contentWithHeavyStarter = ContentDatabase.fromRaw(
       id: "short_sword",
       name: "Heavy Starter Sword",
       type: "weapon",
+      tier: 4,
       damageMin: 2,
       damageMax: 6,
       strengthRequired: 16,
@@ -211,8 +212,8 @@ describe("GameWorld", () => {
     expect(mage.heroProfileId).toBe("mage");
     expect(mage.heroSprite).toBe("mage");
     expect(mage.heroStats.maxHealth).toBe(15);
-    expect(mage.inventory.all.map((item) => item.id)).toEqual(["quarterstaff", "ration"]);
-    expect(mage.inventory.equippedIn("weapon")?.id).toBe("quarterstaff");
+    expect(mage.inventory.all.map((item) => item.defId)).toEqual(["quarterstaff", "ration"]);
+    expect(mage.inventory.equippedIn("weapon")?.defId).toBe("quarterstaff");
     expect(mage.snapshot().heroProfileId).toBe("mage");
 
     const loaded = GameWorld.fromSnapshot(mage.snapshot(), contentWithProfiles);
@@ -234,19 +235,31 @@ describe("GameWorld", () => {
     const snapshot = base.snapshot();
     snapshot.hero.pos = pickupCell!;
     snapshot.dungeon.levels[0]!.groundItems = [
-      { cell: pickupCell!, itemId: "potion_strength" },
+      {
+        cell: pickupCell!,
+        item: {
+          uid: "ground_strength",
+          defId: "potion_strength",
+          level: 0,
+          levelKnown: true,
+          cursed: false,
+          cursedKnown: false,
+        },
+      },
     ];
     const w = GameWorld.fromSnapshot(snapshot, contentWithGroundPotion);
 
-    expect(w.level.itemAt(w.heroPos)).toBe("potion_strength");
+    expect(w.level.itemAt(w.heroPos)?.defId).toBe("potion_strength");
     expect(w.tryPickUpItem()).toBe(true);
 
     expect(w.level.itemAt(w.heroPos)).toBeNull();
-    expect(w.inventory.all.some((item) => item.id === "potion_strength")).toBe(true);
+    expect(w.inventory.all.some((item) => item.defId === "potion_strength")).toBe(true);
     expect(w.log.at(-1)).toBe("You pick up Potion of Strength.");
 
+    // With no other actors on the queue, fixTime normalizes the hero back to 0;
+    // the successful pickup/log/inventory mutation proves the turn resolved.
     const heroTurn = w.snapshot().queue.actors.find((actor) => actor.id === "hero");
-    expect(heroTurn?.time).toBeCloseTo(1);
+    expect(heroTurn?.time).toBe(0);
   });
 
   it("emits a pickup callback after adding a ground item to inventory", () => {
@@ -263,16 +276,26 @@ describe("GameWorld", () => {
     const snapshot = base.snapshot();
     snapshot.hero.pos = pickupCell!;
     snapshot.dungeon.levels[0]!.groundItems = [
-      { cell: pickupCell!, itemId: "potion_strength" },
+      {
+        cell: pickupCell!,
+        item: {
+          uid: "ground_strength_event",
+          defId: "potion_strength",
+          level: 0,
+          levelKnown: true,
+          cursed: false,
+          cursedKnown: false,
+        },
+      },
     ];
 
-    const events: Array<{ itemId: string; cell: number }> = [];
+    const events: Array<{ itemUid: string; itemId: string; cell: number }> = [];
     const w = GameWorld.fromSnapshot(snapshot, contentWithGroundPotion, {
       onItemPickup: (event) => events.push(event),
     });
 
     expect(w.tryPickUpItem()).toBe(true);
-    expect(events).toEqual([{ itemId: "potion_strength", cell: pickupCell! }]);
+    expect(events).toEqual([{ itemUid: "ground_strength_event", itemId: "potion_strength", cell: pickupCell! }]);
   });
 
   it("wait spends one hero action scaled by the current speed stat", () => {
@@ -390,15 +413,23 @@ describe("GameWorld", () => {
     expect(base.heroStats.attackDelay).toBeCloseTo(1.2);
 
     const snapshot = base.snapshot();
-    snapshot.inventory.itemIds.push("potion_strength");
+    snapshot.inventory.items!.push({
+      uid: "strength_potion",
+      defId: "potion_strength",
+      level: 0,
+      levelKnown: true,
+      cursed: false,
+      cursedKnown: false,
+      quantity: 1,
+    });
     const w = GameWorld.fromSnapshot(snapshot, contentWithHeavyStarter);
 
-    expect(w.consumeItem("potion_strength")).toBe(true);
+    expect(w.consumeItem("strength_potion")).toBe(true);
 
     expect(w.heroStats.baseOf("strength")).toBe(16);
     expect(w.heroStats.strength).toBe(16);
     expect(w.heroStats.attackDelay).toBe(1);
-    expect(w.inventory.all.some((item) => item.id === "potion_strength")).toBe(false);
+    expect(w.inventory.all.some((item) => item.defId === "potion_strength")).toBe(false);
   });
 
   it("rangedAttack damages an enemy through a clear line of fire", () => {
@@ -481,33 +512,21 @@ describe("GameWorld", () => {
       [],
     );
 
+    const base = new GameWorld("DMG-EVENT", aggressive, { enemyCount: 1 });
+    const adjacent = base.grid
+      .neighbours4(base.heroPos)
+      .find((cell) => base.grid.isWalkable(cell));
+    expect(adjacent).toBeDefined();
+    const snapshot = base.snapshot();
+    snapshot.enemies[0]!.pos = adjacent!;
+
     const events: HeroDamagedInfo[] = [];
-    const w = new GameWorld("DMG-EVENT", aggressive, {
-      enemyCount: 8,
+    const w = GameWorld.fromSnapshot(snapshot, aggressive, {
       onHeroDamaged: (info) => events.push(info),
     });
     const maxHp = w.heroStats.maxHealth;
 
-    // Walk one tile per turn toward the nearest enemy (bump-attacking when
-    // adjacent) until the hero takes its first hit.
-    let guard = 0;
-    while (w.heroStats.hp === maxHp && w.heroAlive && guard++ < 4000) {
-      const target = w.enemies[0];
-      if (!target) {
-        w.waitTurn();
-        continue;
-      }
-      const dx = Math.sign(w.grid.xOf(target.pos) - w.grid.xOf(w.heroPos));
-      const dy = Math.sign(w.grid.yOf(target.pos) - w.grid.yOf(w.heroPos));
-      // Single-axis steps only (the world is 4-connected). Prefer the longer
-      // axis, fall back to the other if blocked.
-      if (Math.abs(w.grid.xOf(target.pos) - w.grid.xOf(w.heroPos)) >=
-          Math.abs(w.grid.yOf(target.pos) - w.grid.yOf(w.heroPos))) {
-        if (!w.tryMoveHero(dx, 0)) w.tryMoveHero(0, dy);
-      } else {
-        if (!w.tryMoveHero(0, dy)) w.tryMoveHero(dx, 0);
-      }
-    }
+    expect(w.waitTurn()).toBe(true);
 
     expect(events.length).toBeGreaterThan(0);
     expect(events.every((e) => e.amount > 0)).toBe(true);

@@ -16,6 +16,8 @@ import { RNG } from "@/core/rng/Mulberry32";
 import { generateLevel } from "@/core/procgen/LevelGenerator";
 import { Grid } from "@/core/grid/Grid";
 import { Level, type LevelSnapshot } from "./Level";
+import type { ItemDef } from "@/core/data/types";
+import { ItemFactory } from "@/core/items/ItemFactory";
 
 /** Number of floors, matching the Phase 1 spec (26 levels). */
 export const DUNGEON_DEPTH = 26;
@@ -29,6 +31,8 @@ export interface DungeonSnapshot {
 export interface DungeonLootConfig {
   /** Random floor loot pool. Should contain validated item ids only. */
   itemIds?: readonly string[];
+  /** All item defs needed to instantiate generated loot into ItemInstances. */
+  itemDefs?: readonly ItemDef[];
   /** Progression potion id, if present in content. Spawned exactly twice on depths 1..5. */
   strengthPotionId?: string | null;
 }
@@ -45,6 +49,7 @@ export class DungeonManager {
   /** levels[d] is the cached floor at depth d (1..26); null until generated. */
   private readonly levels: (Level | null)[];
   private readonly lootItemIds: string[];
+  private readonly itemDefs: ItemDef[];
   private readonly strengthPotionId: string | null;
   private readonly strengthPotionDepths: Set<number>;
   private currentDepth = 1;
@@ -53,6 +58,7 @@ export class DungeonManager {
     this.seed = seed;
     this.levels = new Array<Level | null>(DUNGEON_DEPTH + 1).fill(null);
     this.lootItemIds = [...new Set(loot.itemIds ?? [])];
+    this.itemDefs = [...(loot.itemDefs ?? [])];
     this.strengthPotionId = loot.strengthPotionId ?? null;
     this.strengthPotionDepths = this.strengthPotionId
       ? chooseStrengthPotionDepths(seed)
@@ -100,6 +106,11 @@ export class DungeonManager {
         itemIds: this.lootItemIds,
         guaranteedItemIds,
       });
+      const nextLootUid = createFloorLootUidFactory(depth);
+      const itemFactory = new ItemFactory(this.itemDefs, {
+        rng: new RNG((depthSeed ^ 0x27d4eb2d) >>> 0),
+        createUid: nextLootUid,
+      });
       level = new Level({
         depth,
         seed: depthSeed,
@@ -107,7 +118,28 @@ export class DungeonManager {
         rooms: generated.rooms,
         entrance: generated.entrance,
         exit: generated.exit,
-        groundItems: generated.groundItems,
+        groundItems: generated.groundItems
+          .map((ground) => {
+            try {
+              return {
+                cell: ground.cell,
+                item: itemFactory.create(ground.itemId),
+              };
+            } catch {
+              return {
+                cell: ground.cell,
+                item: {
+                  uid: nextLootUid(),
+                  defId: ground.itemId,
+                  level: 0,
+                  levelKnown: true,
+                  cursed: false,
+                  cursedKnown: false,
+                },
+              };
+            }
+          })
+          .filter((ground): ground is NonNullable<typeof ground> => ground !== null),
         floorVariants: generated.floorVariants,
       });
       this.levels[depth] = level;
@@ -166,6 +198,14 @@ export class DungeonManager {
     dungeon.travelTo(snapshot.depth);
     return dungeon;
   }
+}
+
+function createFloorLootUidFactory(depth: number): () => string {
+  let index = 0;
+  return () => {
+    index += 1;
+    return `loot_d${depth}_${index.toString(36)}`;
+  };
 }
 
 function chooseStrengthPotionDepths(seed: string): Set<number> {

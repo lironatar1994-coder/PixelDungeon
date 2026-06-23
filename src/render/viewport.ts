@@ -119,8 +119,8 @@ function cameraMetrics(
   );
   const tileSize = Math.max(1, Math.floor(baseTileSize * zoom));
   const scale = tileSize / BASE_TILE_SIZE;
-  const focusX = focusPos.x + 0.5;
-  const focusY = focusPos.y + 0.5;
+  const focusX = focusPos.x;
+  const focusY = focusPos.y;
   const mapW = grid.width * tileSize;
   const mapH = grid.height * tileSize;
   const idealX = Math.floor(viewW / 2 - focusX * tileSize);

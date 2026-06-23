@@ -109,9 +109,9 @@ describe("SaveManager", () => {
     expect(loaded.heroPos).toBe(before.hero.pos);
     expect(loaded.heroStats.hp).toBe(13);
     expect(loaded.inventory).toBeInstanceOf(Inventory);
-    expect(loaded.inventory.count).toBe(before.inventory.itemIds.length);
-    expect(loaded.inventory.equippedIn("weapon")?.id).toBe("short_sword");
-    expect(loaded.inventory.equippedIn("armor")?.id).toBe("leather_armor");
+    expect(loaded.inventory.count).toBe(before.inventory.items?.length);
+    expect(loaded.inventory.equippedIn("weapon")?.defId).toBe("short_sword");
+    expect(loaded.inventory.equippedIn("armor")?.defId).toBe("leather_armor");
     expect(loaded.enemies.length).toBe(before.enemies.length);
     expect(loaded.enemies[0]).toBeInstanceOf(Enemy);
     expect(typeof loaded.enemies[0]?.canSeeHero()).toBe("boolean");
@@ -151,8 +151,8 @@ describe("SaveManager", () => {
     const loaded = SaveManager.parse(SaveManager.stringify(world), content);
 
     expect(loaded.heroStats.hp).toBe(20);
-    expect(loaded.inventory.all.some((item) => item.id === "potion_healing")).toBe(false);
-    expect(loaded.inventory.equippedIn("weapon")?.id).toBe("short_sword");
+    expect(loaded.inventory.all.some((item) => item.defId === "potion_healing")).toBe(false);
+    expect(loaded.inventory.equippedIn("weapon")?.defId).toBe("short_sword");
   });
 
   it("clears storage instead of saving a dead hero", () => {

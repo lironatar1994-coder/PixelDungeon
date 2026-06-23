@@ -890,3 +890,67 @@ rendering and UI remain unchanged.
 
 Focused procgen tests now verify determinism, connected rooms, door-seam
 geometry, varied room graphs, and deterministic loot placement.
+
+### Phase 19 - Flyweight Item Instance Foundation COMPLETE
+Added the future-proof item-level foundation inspired by SPD's `Item`,
+`Weapon`, `MeleeWeapon`, and `Armor` classes. **`ItemDef`**
+([src/core/data/types.ts](src/core/data/types.ts)) is now the immutable
+flyweight template loaded from `items.json`: id, name, description, type, tier,
+sprite key, and base values. Stateful per-run data lives separately in
+**`ItemInstance`** ([src/core/items/ItemInstance.ts](src/core/items/ItemInstance.ts)):
+`uid`, `defId`, upgrade level, identification knowledge, curse knowledge, and
+optional stack quantity. This keeps save payloads compact (`uid/defId/level`
+instead of duplicated names, sprites, and base stats) and lets two copies of
+the same item id have different levels or curse state.
+
+**`itemScaling`** ([src/core/items/itemScaling.ts](src/core/items/itemScaling.ts))
+is a pure stateless math module that combines an immutable `ItemDef` with one
+`ItemInstance`. It implements the SPD formulas for melee weapon damage
+(`min = tier + level`, `max = 5 * (tier + 1) + level * (tier + 1)`, with the
+Quarterstaff max override), armor DR (`DRMin = level`, `DRMax = tier * (2 +
+level)`), and strength requirements using the triangular upgrade drops at
+`+1`, `+3`, `+6`, `+10`, etc. **`ItemFactory`**
+([src/core/items/ItemFactory.ts](src/core/items/ItemFactory.ts)) creates
+instances from item ids via an injected registry, RNG, and uid source; equipment
+starts at `+0/+1/+2` using SPD's `75%/20%/5%` weights while stackable items get
+safe quantities. Focused tests cover the formulas, spawn-level boundaries,
+unique ids, stack quantities, and static factory facade.
+
+Important integration boundary: this phase establishes the flyweight model and
+save-ready instance shape, but the live `Inventory`, ground loot, and save
+schema still need the next migration from `ItemDef[]`/item-id slots to
+`ItemInstance[]`/uid slots. That migration should preserve backward
+compatibility by rehydrating old `itemIds` snapshots into fresh instances with
+stable generated uids and default level `0`.
+
+### Phase 19.1 - Item Instance Migration COMPLETE
+Migrated the live game state onto the flyweight item-instance model. The
+**`Inventory`** ([src/core/items/Inventory.ts](src/core/items/Inventory.ts))
+now stores `InventoryItem` entries: one compact `ItemInstance` plus a reference
+to the immutable `ItemDef`. Equipment slots are keyed by `uid`, not item id, so
+two copies of the same weapon can have different upgrade levels and the correct
+one remains equipped after save/load. Inventory snapshots now write
+`items: ItemInstanceSnapshot[]` and `equipped` uids; old snapshots containing
+`itemIds` still rehydrate into level-0 legacy instances for backward
+compatibility.
+
+Ground loot now preserves physical item identity too. **`Level`**
+([src/core/dungeon/Level.ts](src/core/dungeon/Level.ts)) stores one
+`ItemInstance` per loot cell, while **`DungeonManager`**
+([src/core/dungeon/DungeonManager.ts](src/core/dungeon/DungeonManager.ts))
+instantiates generated loot through **`ItemFactory`**
+([src/core/items/ItemFactory.ts](src/core/items/ItemFactory.ts)) using a
+floor-local seeded RNG and stable floor-loot uids. Dropping an item moves the
+same instance from inventory to the floor; picking it back up keeps its uid,
+level, known/cursed state, and quantity intact. `GameWorld` inventory actions
+(`equipItem`, `consumeItem`, `dropItem`) now accept item uids, and the DOM
+overlay displays definition data while issuing uid intents back to the core.
+
+The UI and save layers remain decoupled from item math. **`GameOverlay`**
+([src/ui/GameOverlay.ts](src/ui/GameOverlay.ts)) renders sprites/descriptions
+from `item.def` but shows badges through **`itemScaling`**
+([src/core/items/itemScaling.ts](src/core/items/itemScaling.ts)), so upgrade
+levels immediately affect displayed damage, armor, and strength requirement.
+Focused migration coverage passes for inventory, item scaling, item factory,
+GameWorld pickup/consume/equipment flows, SaveManager rehydration,
+DungeonManager loot persistence, and procgen loot selection.

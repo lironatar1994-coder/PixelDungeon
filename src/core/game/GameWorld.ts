@@ -31,6 +31,7 @@ import { lineOfFire } from "@/core/fov/lineOfFire";
 import { resolveAttack } from "@/core/combat/resolveAttack";
 import type { BaseStats, CombatStatsSnapshot } from "@/core/combat/CombatStats";
 import { Inventory, type InventorySnapshot } from "@/core/items/Inventory";
+import { ItemFactory } from "@/core/items/ItemFactory";
 import { ContentDatabase, type ContentDatabase as ContentDatabaseType } from "@/core/data/ContentDatabase";
 import type { HeroDef } from "@/core/data/types";
 
@@ -59,7 +60,14 @@ export interface ActorMoveInfo {
   toCell: number;
 }
 
+export interface ActorDeathInfo {
+  actorId: string;
+  cell: number;
+  name: string;
+}
+
 export interface ItemPickupInfo {
+  itemUid: string;
   itemId: string;
   cell: number;
 }
@@ -84,6 +92,8 @@ export interface WorldOptions {
   onCombatStrike?: (info: CombatStrikeInfo) => void;
   /** Fired after an actor's core grid position changes; render may tween it. */
   onActorMove?: (info: ActorMoveInfo) => void;
+  /** Fired after an actor dies; render may animate it before it disappears. */
+  onActorDeath?: (info: ActorDeathInfo) => void;
   /** Fired after an item is removed from the floor and added to inventory. */
   onItemPickup?: (info: ItemPickupInfo) => void;
   /** Fired after the hero gains one or more levels. */
@@ -152,6 +162,7 @@ export class GameWorld {
   private readonly onHeroDamaged?: (info: HeroDamagedInfo) => void;
   private readonly onCombatStrike?: (info: CombatStrikeInfo) => void;
   private readonly onActorMove?: (info: ActorMoveInfo) => void;
+  private readonly onActorDeath?: (info: ActorDeathInfo) => void;
   private readonly onItemPickup?: (info: ItemPickupInfo) => void;
   private readonly onHeroLevelUp?: (info: HeroLevelUpInfo) => void;
   private enemyAiRng = new RNG(0);
@@ -176,6 +187,7 @@ export class GameWorld {
     this.onHeroDamaged = opts.onHeroDamaged;
     this.onCombatStrike = opts.onCombatStrike;
     this.onActorMove = opts.onActorMove;
+    this.onActorDeath = opts.onActorDeath;
     this.onItemPickup = opts.onItemPickup;
     this.onHeroLevelUp = opts.onHeroLevelUp;
 
@@ -186,7 +198,7 @@ export class GameWorld {
   static fromSnapshot(
     snapshot: GameWorldSnapshot,
     content: ContentDatabaseType,
-    opts: Pick<WorldOptions, "onChange" | "onLog" | "onHeroDamaged" | "onCombatStrike" | "onActorMove" | "onItemPickup" | "onHeroLevelUp"> = {},
+    opts: Pick<WorldOptions, "onChange" | "onLog" | "onHeroDamaged" | "onCombatStrike" | "onActorMove" | "onActorDeath" | "onItemPickup" | "onHeroLevelUp"> = {},
   ): GameWorld {
     const world = new GameWorld(snapshot.seed, content, {
       visionRadius: snapshot.visionRadius,
@@ -197,6 +209,7 @@ export class GameWorld {
       onHeroDamaged: opts.onHeroDamaged,
       onCombatStrike: opts.onCombatStrike,
       onActorMove: opts.onActorMove,
+      onActorDeath: opts.onActorDeath,
       onItemPickup: opts.onItemPickup,
       onHeroLevelUp: opts.onHeroLevelUp,
     });
@@ -269,9 +282,15 @@ export class GameWorld {
     // Build the inventory from loaded items, then equip weapon + armor. The
     // equipment applies its stats as removable modifiers (no base mutation).
     this.inventoryRef = new Inventory(this.hero.stats, 20);
+    let starterIndex = 0;
+    const starterFactory = new ItemFactory(this.content, {
+      // Starter gear should be class-defined, not randomly upgraded.
+      rng: { next: () => 0 },
+      createUid: () => `starter_${++starterIndex}`,
+    });
     for (const id of this.heroProfile.startingItems) {
       const item = this.content.getItem(id);
-      if (item) this.inventoryRef.add(item);
+      if (item) this.inventoryRef.addInstance(starterFactory.create(id), item);
     }
     for (const item of this.inventoryRef.all) {
       if (item.type === "weapon" || item.type === "armor") {
@@ -423,6 +442,11 @@ export class GameWorld {
           }
         }
       }
+      this.onActorDeath?.({
+        actorId: this.enemyId(enemy),
+        cell: enemy.pos,
+        name: enemy.name,
+      });
       this.removeEnemy(enemy);
       this.pushLog(`The ${enemy.name} dies!`);
     }
@@ -481,15 +505,15 @@ export class GameWorld {
   quaffHealing(): boolean {
     if (this.heroDead) return false;
     const potion = this.inventoryRef.all.find(
-      (it) => it.type === "potion" && typeof it.heal === "number",
+      (it) => it.type === "potion" && typeof it.def.heal === "number",
     );
     if (!potion) return false;
-    return this.consumeItem(potion.id);
+    return this.consumeItem(potion.uid);
   }
 
-  equipItem(itemId: string): boolean {
+  equipItem(itemUid: string): boolean {
     if (this.heroDead) return false;
-    const item = this.inventoryRef.all.find((it) => it.id === itemId);
+    const item = this.inventoryRef.findByUid(itemUid);
     if (!item || !this.inventoryRef.equip(item)) return false;
     this.pushLog(`You equip ${item.name}.`);
     this.hero.pending = { kind: "wait" };
@@ -497,17 +521,17 @@ export class GameWorld {
     return true;
   }
 
-  consumeItem(itemId: string): boolean {
+  consumeItem(itemUid: string): boolean {
     if (this.heroDead) return false;
-    const item = this.inventoryRef.all.find((it) => it.id === itemId);
+    const item = this.inventoryRef.findByUid(itemUid);
     if (!item) return false;
-    if (item.type === "potion" && typeof item.strengthBonus === "number" && item.strengthBonus > 0) {
-      this.hero.stats.increaseBase("strength", item.strengthBonus);
+    if (item.type === "potion" && typeof item.def.strengthBonus === "number" && item.def.strengthBonus > 0) {
+      this.hero.stats.increaseBase("strength", item.def.strengthBonus);
       this.inventoryRef.remove(item);
       this.inventoryRef.refreshEquipmentModifiers();
-      this.pushLog(`You quaff ${item.name} (+${item.strengthBonus} STR).`);
-    } else if (item.type === "potion" && typeof item.heal === "number") {
-      const healed = this.hero.stats.heal(item.heal);
+      this.pushLog(`You quaff ${item.name} (+${item.def.strengthBonus} STR).`);
+    } else if (item.type === "potion" && typeof item.def.heal === "number") {
+      const healed = this.hero.stats.heal(item.def.heal);
       this.inventoryRef.remove(item);
       this.pushLog(`You quaff ${item.name} (+${healed} HP).`);
     } else if (item.type === "food") {
@@ -521,11 +545,11 @@ export class GameWorld {
     return true;
   }
 
-  dropItem(itemId: string): boolean {
+  dropItem(itemUid: string): boolean {
     if (this.heroDead) return false;
-    const item = this.inventoryRef.all.find((it) => it.id === itemId);
+    const item = this.inventoryRef.findByUid(itemUid);
     if (!item || !this.inventoryRef.remove(item)) return false;
-    this.level.placeGroundItem(this.hero.pos, item.id);
+    this.level.placeGroundItem(this.hero.pos, item);
     this.pushLog(`You drop ${item.name}.`);
     this.hero.pending = { kind: "wait" };
     this.processTurns();
@@ -541,12 +565,12 @@ export class GameWorld {
 
   tryPickUpItem(): boolean {
     if (this.heroDead) return false;
-    const itemId = this.level.itemAt(this.hero.pos);
-    if (itemId === null) {
+    const groundItem = this.level.itemAt(this.hero.pos);
+    if (groundItem === null) {
       this.pushLog("Nothing here.");
       return false;
     }
-    const item = this.content.getItem(itemId);
+    const item = this.content.getItem(groundItem.defId);
     if (!item) {
       this.level.takeGroundItem(this.hero.pos);
       this.pushLog("The item crumbles away.");
@@ -711,17 +735,17 @@ export class GameWorld {
   }
 
   private pickUpHere(): void {
-    const itemId = this.level.itemAt(this.hero.pos);
-    if (itemId === null || this.inventoryRef.isFull()) return;
-    const item = this.content.getItem(itemId);
+    const groundItem = this.level.itemAt(this.hero.pos);
+    if (groundItem === null || this.inventoryRef.isFull()) return;
+    const item = this.content.getItem(groundItem.defId);
     if (!item) return;
     const removed = this.level.takeGroundItem(this.hero.pos);
     if (removed === null) return;
-    if (!this.inventoryRef.add(item)) {
+    if (!this.inventoryRef.addInstance(removed, item)) {
       this.level.placeGroundItem(this.hero.pos, removed);
       return;
     }
-    this.onItemPickup?.({ itemId: item.id, cell: this.hero.pos });
+    this.onItemPickup?.({ itemUid: removed.uid, itemId: item.id, cell: this.hero.pos });
     this.pushLog(`You pick up ${item.name}.`);
   }
 
@@ -858,6 +882,7 @@ function lootConfigForContent(content: ContentDatabaseType): DungeonLootConfig {
     itemIds: content.allItems
       .map((item) => item.id)
       .filter((id) => id !== "potion_strength"),
+    itemDefs: content.allItems,
     strengthPotionId: hasStrengthPotion ? "potion_strength" : null,
   };
 }

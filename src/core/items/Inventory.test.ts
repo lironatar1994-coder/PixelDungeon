@@ -3,33 +3,56 @@ import { CombatStats } from "@/core/combat/CombatStats";
 import { Inventory } from "@/core/items/Inventory";
 import type { ItemDef } from "@/core/data/types";
 
-const sword: ItemDef = { id: "sword", name: "Short Sword", type: "weapon", damageMin: 2, damageMax: 6 };
+const sword: ItemDef = {
+  id: "sword",
+  name: "Short Sword",
+  type: "weapon",
+  tier: 2,
+  description: "",
+};
 const dagger: ItemDef = {
   id: "dagger",
   name: "Quick Dagger",
   type: "weapon",
-  damageMin: 1,
-  damageMax: 2,
+  tier: 1,
   attackDelay: 0.5,
+  description: "",
 };
-const axe: ItemDef = { id: "axe", name: "War Axe", type: "weapon", damageMin: 4, damageMax: 10 };
-const armor: ItemDef = { id: "armor", name: "Leather Armor", type: "armor", defense: 3 };
+const axe: ItemDef = {
+  id: "axe",
+  name: "War Axe",
+  type: "weapon",
+  tier: 3,
+  description: "",
+};
+const armor: ItemDef = {
+  id: "armor",
+  name: "Leather Armor",
+  type: "armor",
+  tier: 2,
+  description: "",
+};
 const heavySword: ItemDef = {
   id: "heavy_sword",
   name: "Heavy Sword",
   type: "weapon",
-  damageMin: 5,
-  damageMax: 9,
-  strengthRequired: 17,
+  tier: 5,
+  description: "",
 };
 const heavyArmor: ItemDef = {
   id: "heavy_armor",
   name: "Heavy Armor",
   type: "armor",
-  defense: 5,
-  strengthRequired: 17,
+  tier: 5,
+  description: "",
 };
-const potion: ItemDef = { id: "potion", name: "Potion", type: "potion", heal: 10 };
+const potion: ItemDef = {
+  id: "potion",
+  name: "Potion",
+  type: "potion",
+  heal: 10,
+  description: "",
+};
 
 function freshStats(): CombatStats {
   return new CombatStats({
@@ -42,47 +65,56 @@ function freshStats(): CombatStats {
   });
 }
 
+function item(inv: Inventory, defId: string) {
+  const found = inv.all.find((entry) => entry.defId === defId);
+  if (!found) throw new Error(`Missing inventory item ${defId}`);
+  return found;
+}
+
 describe("Inventory", () => {
-  it("stores items in an array up to its capacity", () => {
+  it("stores item instances in an array up to its capacity", () => {
     const inv = new Inventory(freshStats(), 3);
     expect(inv.add(sword)).toBe(true);
     expect(inv.add(armor)).toBe(true);
     expect(inv.count).toBe(2);
-    expect(inv.all).toContain(sword);
+    expect(inv.all[0]?.def).toBe(sword);
+    expect(inv.all[0]?.uid).toMatch(/^inv_sword_/);
   });
 
   it("REQUIRED: refuses to overflow past the capacity limit", () => {
     const inv = new Inventory(freshStats(), 2);
-    expect(inv.add({ id: "a", name: "A", type: "misc" })).toBe(true);
-    expect(inv.add({ id: "b", name: "B", type: "misc" })).toBe(true);
+    expect(inv.add({ id: "a", name: "A", type: "misc", description: "" })).toBe(true);
+    expect(inv.add({ id: "b", name: "B", type: "misc", description: "" })).toBe(true);
     expect(inv.isFull()).toBe(true);
-    // Third add must fail and must NOT grow the array.
-    expect(inv.add({ id: "c", name: "C", type: "misc" })).toBe(false);
+    expect(inv.add({ id: "c", name: "C", type: "misc", description: "" })).toBe(false);
     expect(inv.count).toBe(2);
   });
 
-  it("equips a weapon, applying its damage to the owner's stats", () => {
+  it("equips a weapon, applying SPD-scaled damage to the owner's stats", () => {
     const stats = freshStats();
     const inv = new Inventory(stats, 10);
     inv.add(sword);
-    expect(inv.equip(sword)).toBe(true);
-    expect(inv.equippedIn("weapon")).toBe(sword);
-    // base 1-3 + sword 2-6 = 3-9
+    const swordItem = item(inv, "sword");
+
+    expect(inv.equip(swordItem)).toBe(true);
+    expect(inv.equippedIn("weapon")).toBe(swordItem);
+    // base 1-3 + tier-2 +0 sword 2-15 = 3-18
     expect(stats.damageMin).toBe(3);
-    expect(stats.damageMax).toBe(9);
+    expect(stats.damageMax).toBe(18);
   });
 
   it("unequipping cleanly reverses the stat changes", () => {
     const stats = freshStats();
     const inv = new Inventory(stats, 10);
     inv.add(armor);
-    inv.equip(armor);
-    expect(stats.armor).toBe(3);
+    const armorItem = item(inv, "armor");
+
+    inv.equip(armorItem);
+    expect(stats.armor).toBe(4); // tier 2 * (2 + level 0)
     inv.unequip("armor");
     expect(stats.armor).toBe(0);
     expect(inv.equippedIn("armor")).toBeNull();
-    // The item is still in the bag, just not worn.
-    expect(inv.all).toContain(armor);
+    expect(inv.all).toContain(armorItem);
   });
 
   it("swapping weapons removes the old one's modifiers", () => {
@@ -90,11 +122,13 @@ describe("Inventory", () => {
     const inv = new Inventory(stats, 10);
     inv.add(sword);
     inv.add(axe);
-    inv.equip(sword);
-    expect(stats.damageMax).toBe(9); // 3 + 6
-    inv.equip(axe); // replaces sword
-    expect(stats.damageMax).toBe(13); // 3 + 10, NOT 3 + 6 + 10
-    expect(inv.equippedIn("weapon")).toBe(axe);
+
+    inv.equip(item(inv, "sword"));
+    expect(stats.damageMax).toBe(18); // 3 + 15
+    const axeItem = item(inv, "axe");
+    inv.equip(axeItem);
+    expect(stats.damageMax).toBe(23); // 3 + tier-3 max 20, not stacked
+    expect(inv.equippedIn("weapon")).toBe(axeItem);
   });
 
   it("equips weapon attack delay without mutating the base stat", () => {
@@ -102,7 +136,7 @@ describe("Inventory", () => {
     const inv = new Inventory(stats, 10);
     inv.add(dagger);
 
-    expect(inv.equip(dagger)).toBe(true);
+    expect(inv.equip(item(inv, "dagger"))).toBe(true);
     expect(stats.attackDelay).toBe(0.5);
     expect(stats.baseOf("attackDelay")).toBe(1);
 
@@ -115,10 +149,10 @@ describe("Inventory", () => {
     const inv = new Inventory(stats, 10);
     inv.add(heavySword);
 
-    expect(inv.equip(heavySword)).toBe(true);
-    expect(stats.attackDelay).toBeCloseTo(Math.pow(1.2, 2));
+    expect(inv.equip(item(inv, "heavy_sword"))).toBe(true);
+    expect(stats.attackDelay).toBeCloseTo(Math.pow(1.2, 3)); // STR req 18 vs STR 15
 
-    stats.increaseBase("strength", 2);
+    stats.increaseBase("strength", 3);
     inv.refreshEquipmentModifiers();
     expect(stats.attackDelay).toBe(1);
   });
@@ -128,10 +162,10 @@ describe("Inventory", () => {
     const inv = new Inventory(stats, 10);
     inv.add(heavyArmor);
 
-    expect(inv.equip(heavyArmor)).toBe(true);
-    expect(stats.speed).toBeCloseTo(1 / Math.pow(1.2, 2));
+    expect(inv.equip(item(inv, "heavy_armor"))).toBe(true);
+    expect(stats.speed).toBeCloseTo(1 / Math.pow(1.2, 3));
 
-    stats.increaseBase("strength", 2);
+    stats.increaseBase("strength", 3);
     inv.refreshEquipmentModifiers();
     expect(stats.speed).toBe(1);
   });
@@ -140,9 +174,10 @@ describe("Inventory", () => {
     const stats = freshStats();
     const inv = new Inventory(stats, 10);
     inv.add(sword);
-    inv.equip(sword);
-    inv.remove(sword);
-    expect(stats.damageMax).toBe(3); // back to base
+    const swordItem = item(inv, "sword");
+    inv.equip(swordItem);
+    inv.remove(swordItem);
+    expect(stats.damageMax).toBe(3);
     expect(inv.equippedIn("weapon")).toBeNull();
     expect(inv.count).toBe(0);
   });
@@ -150,7 +185,7 @@ describe("Inventory", () => {
   it("rejects equipping a non-equippable or absent item", () => {
     const inv = new Inventory(freshStats(), 10);
     inv.add(potion);
-    expect(inv.equip(potion)).toBe(false); // potions aren't equipment
-    expect(inv.equip(sword)).toBe(false); // not in the bag
+    expect(inv.equip(item(inv, "potion"))).toBe(false);
+    expect(inv.equipByUid("missing")).toBe(false);
   });
 });

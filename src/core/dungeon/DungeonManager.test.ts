@@ -75,7 +75,7 @@ describe("DungeonManager", () => {
     const strengthDepths: number[] = [];
     for (let depth = 1; depth <= 5; depth++) {
       const level = d.levelAt(depth);
-      const count = level.groundItems.filter((item) => item.itemId === "potion_strength").length;
+      const count = level.groundItems.filter((item) => item.item.defId === "potion_strength").length;
       if (count > 0) strengthDepths.push(depth);
       expect(count).toBeLessThanOrEqual(1);
     }

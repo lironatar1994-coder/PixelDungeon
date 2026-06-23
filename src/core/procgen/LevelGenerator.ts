@@ -15,15 +15,19 @@ import { Grid } from "@/core/grid/Grid";
 import { Terrain } from "@/core/grid/terrain";
 import { Rect } from "@/core/grid/Rect";
 import type { RNG } from "@/core/rng/Mulberry32";
-import type { GroundItem } from "@/core/dungeon/Level";
 import { generatePatch } from "@/core/grid/gen/Patch";
+
+export interface GeneratedGroundItem {
+  cell: number;
+  itemId: string;
+}
 
 export interface GeneratedLevel {
   grid: Grid;
   rooms: Rect[];
   entrance: number;
   exit: number;
-  groundItems: GroundItem[];
+  groundItems: GeneratedGroundItem[];
   floorVariants: Map<number, number>;
 }
 
@@ -354,7 +358,7 @@ function generateGroundItems(
   entrance: number,
   exit: number,
   loot: LootGenerationOptions,
-): GroundItem[] {
+): GeneratedGroundItem[] {
   const itemIds = loot.itemIds ?? [];
   const guaranteedItemIds = loot.guaranteedItemIds ?? [];
   const randomCount = itemIds.length > 0
@@ -370,7 +374,7 @@ function generateGroundItems(
   }
   rng.shuffle(candidates);
 
-  const groundItems: GroundItem[] = [];
+  const groundItems: GeneratedGroundItem[] = [];
   const place = (itemId: string): void => {
     const cell = candidates.pop();
     if (cell === undefined) return;

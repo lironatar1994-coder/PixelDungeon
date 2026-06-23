@@ -1,7 +1,14 @@
 import "./gameOverlay.css";
 import type { EventBus } from "@/events/EventBus";
-import type { ItemDef } from "@/core/data/types";
+import type { InventoryItem } from "@/core/items/Inventory";
+import {
+  armorDamageReduction,
+  meleeWeaponDamage,
+  strengthRequirement,
+} from "@/core/items/itemScaling";
 import type { SpriteKey, SpriteSheetAssets } from "@/render/AssetLoader";
+
+type InventoryTab = "all" | "equipment" | "consumables";
 
 export interface OverlayState {
   seed: string;
@@ -29,7 +36,7 @@ export interface OverlayState {
   };
   inventory: {
     capacity: number;
-    items: readonly ItemDef[];
+    items: readonly InventoryItem[];
     equippedWeaponId: string | null;
     equippedArmorId: string | null;
   };
@@ -37,9 +44,9 @@ export interface OverlayState {
 }
 
 export interface OverlayActions {
-  equip(itemId: string): boolean;
-  consume(itemId: string): boolean;
-  drop(itemId: string): boolean;
+  equip(itemUid: string): boolean;
+  consume(itemUid: string): boolean;
+  drop(itemUid: string): boolean;
   wait(): boolean;
   quickAttack(): boolean;
   quickslot(): void;
@@ -68,6 +75,8 @@ export class GameOverlay {
   private heroOpen = false;
   private helpOpen = false;
   private quickslotOpen = false;
+  private selectedInventoryItemId: string | null = null;
+  private inventoryTab: InventoryTab = "all";
   private actionBarRendered = false;
   private utilityBarRendered = false;
   private quickslotGroup!: HTMLDivElement;
@@ -279,15 +288,15 @@ export class GameOverlay {
   private renderQuickslots(state: OverlayState): void {
     if (!this.quickslotGroup) return;
 
-    const grouped = new Map<string, { item: ItemDef; count: number }>();
+    const grouped = new Map<string, { item: InventoryItem; count: number }>();
     for (const item of state.inventory.items) {
       if (item.type !== "potion" && item.type !== "food") continue;
-      const entry = grouped.get(item.id);
-      if (entry) entry.count++;
-      else grouped.set(item.id, { item, count: 1 });
+      const entry = grouped.get(item.defId);
+      if (entry) entry.count += item.quantity ?? 1;
+      else grouped.set(item.defId, { item, count: item.quantity ?? 1 });
     }
     const slots = [...grouped.values()].slice(0, 4);
-    const sig = slots.map((s) => `${s.item.id}x${s.count}`).join(",");
+    const sig = slots.map((s) => `${s.item.defId}x${s.count}`).join(",");
     if (sig === this.quickslotSig) return;
     this.quickslotSig = sig;
 
@@ -307,7 +316,7 @@ export class GameOverlay {
 
       button.title = slot.item.name;
       button.setAttribute("aria-label", `Use ${slot.item.name}`);
-      const sprite = this.assets?.spriteForItem(slot.item.id) ?? null;
+      const sprite = this.assets?.spriteForItem(slot.item.defId) ?? null;
       const iconStyle = sprite
         ? this.assets?.cssStyleForSprite(
             sprite,
@@ -329,7 +338,7 @@ export class GameOverlay {
         button.append(count);
       }
 
-      const id = slot.item.id;
+      const id = slot.item.uid;
       button.addEventListener("click", () => {
         if (this.actions.consume(id)) this.render();
       });
@@ -385,39 +394,100 @@ export class GameOverlay {
     this.inventoryPanel.hidden = false;
     this.inventoryPanel.replaceChildren();
 
+    const selectedItem = this.selectedInventoryItemId
+      ? state.inventory.items.find((item) => item.uid === this.selectedInventoryItemId) ?? null
+      : null;
+    if (!selectedItem) this.selectedInventoryItemId = null;
+
     const header = document.createElement("div");
     header.className = "inventory-header";
-    header.innerHTML = `
-      <div>
-        <h2>Inventory</h2>
-        <p>${state.inventory.items.length}/${state.inventory.capacity} carried</p>
-      </div>
-    `;
-    const close = document.createElement("button");
-    close.type = "button";
-    close.className = "icon-button";
-    close.textContent = "X";
-    close.addEventListener("click", () => {
-      this.inventoryOpen = false;
-      this.inventoryPanel.hidden = true;
-    });
-    header.append(close);
+    const title = document.createElement("div");
+    title.className = "inventory-title";
+    const heading = document.createElement("h2");
+    heading.textContent = "Backpack";
+    title.append(heading);
+
+    const purse = document.createElement("div");
+    purse.className = "inventory-purse";
+    purse.innerHTML = `<strong>0</strong><span class="coin-dot" aria-hidden="true"></span>`;
+    header.append(title, purse);
+
+    const weapon = state.inventory.equippedWeaponId
+      ? state.inventory.items.find((item) => item.uid === state.inventory.equippedWeaponId) ?? null
+      : null;
+    const armor = state.inventory.equippedArmorId
+      ? state.inventory.items.find((item) => item.uid === state.inventory.equippedArmorId) ?? null
+      : null;
 
     const list = document.createElement("div");
-    list.className = "inventory-list";
+    list.className = "inventory-grid";
+    list.append(
+      this.renderInventorySlot({
+        label: "Weapon",
+        item: weapon,
+        placeholder: "shortSword",
+        equipped: weapon !== null,
+        selected: selectedItem?.uid === weapon?.uid,
+      }),
+      this.renderInventorySlot({
+        label: "Armor",
+        item: armor,
+        placeholder: "leatherArmor",
+        equipped: armor !== null,
+        selected: selectedItem?.uid === armor?.uid,
+      }),
+      this.renderInventorySlot({ label: "Artifact", item: null, placeholder: "strengthPotion", muted: true }),
+      this.renderInventorySlot({ label: "Ring", item: null, placeholder: "healingPotion", muted: true }),
+      this.renderInventorySlot({ label: "Misc", item: null, placeholder: "ration", muted: true }),
+    );
 
-    if (state.inventory.items.length === 0) {
-      const empty = document.createElement("div");
-      empty.className = "empty-inventory";
-      empty.textContent = "Empty";
-      list.append(empty);
+    const visibleItems = groupedInventoryItems(state, this.inventoryTab);
+    for (const entry of visibleItems) {
+      list.append(this.renderInventorySlot({
+        label: entry.item.name,
+        item: entry.item,
+        count: entry.count,
+        equipped: entry.item.uid === state.inventory.equippedWeaponId || entry.item.uid === state.inventory.equippedArmorId,
+        selected: selectedItem?.uid === entry.item.uid,
+      }));
+    }
+    for (let i = visibleItems.length; i < state.inventory.capacity; i++) {
+      list.append(this.renderInventorySlot({ label: "Empty", item: null }));
     }
 
-    for (const item of state.inventory.items) {
-      list.append(this.renderItem(item, state));
+    const tabs = document.createElement("nav");
+    tabs.className = "bag-tabs";
+    tabs.setAttribute("aria-label", "Inventory filters");
+    for (const [tab, label, sprite] of [
+      ["all", "Backpack", "uiInventory"],
+      ["equipment", "Equipment", "shortSword"],
+      ["consumables", "Consumables", "healingPotion"],
+    ] as const) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = tab === this.inventoryTab ? "bag-tab bag-tab-active" : "bag-tab";
+      button.title = label;
+      button.setAttribute("aria-label", label);
+      const style = this.assets?.cssStyleForSprite(sprite, 2);
+      if (style) {
+        const icon = document.createElement("span");
+        icon.className = "bag-tab-icon";
+        Object.assign(icon.style, style);
+        button.append(icon);
+      } else {
+        button.textContent = label.slice(0, 1);
+      }
+      button.addEventListener("click", () => {
+        this.inventoryTab = tab;
+        this.renderInventory(this.getState());
+      });
+      tabs.append(button);
     }
 
-    this.inventoryPanel.append(header, list);
+    this.inventoryPanel.append(header, list, tabs);
+    if (selectedItem) {
+      this.inventoryPanel.append(this.renderItemActionCard(selectedItem, state));
+    }
   }
 
   private renderHero(state: OverlayState): void {
@@ -675,77 +745,203 @@ export class GameOverlay {
     this.render();
   }
 
-  private renderItem(item: ItemDef, state: OverlayState): HTMLElement {
-    const row = document.createElement("article");
-    row.className = "inventory-item";
-    const equipped =
-      item.id === state.inventory.equippedWeaponId || item.id === state.inventory.equippedArmorId;
+  private renderInventorySlot(opts: {
+    label: string;
+    item: InventoryItem | null;
+    placeholder?: SpriteKey;
+    count?: number;
+    equipped?: boolean;
+    selected?: boolean;
+    muted?: boolean;
+  }): HTMLButtonElement {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "inventory-slot";
+    button.classList.toggle("inventory-slot-equipped", opts.equipped === true);
+    button.classList.toggle("inventory-slot-selected", opts.selected === true);
+    button.classList.toggle("inventory-slot-muted", opts.muted === true);
+    button.title = opts.item?.name ?? opts.label;
+    button.setAttribute("aria-label", opts.item?.name ?? opts.label);
+
+    const sprite = opts.item
+      ? this.assets?.spriteForItem(opts.item.defId) ?? this.assets?.spriteForItemType(opts.item.type)
+      : opts.placeholder ?? null;
+    const scale = sprite === "healingPotion" || sprite === "strengthPotion" ? 3 : 2;
+    const style = sprite ? this.assets?.cssStyleForSprite(sprite, scale) : null;
+    if (style) {
+      const icon = document.createElement("span");
+      icon.className = "inventory-slot-sprite";
+      Object.assign(icon.style, style);
+      button.append(icon);
+    } else if (opts.item) {
+      button.textContent = opts.item.name.slice(0, 1).toUpperCase();
+    }
+
+    if (opts.item) {
+      const top = inventoryTopBadge(opts.item, opts.count ?? 1);
+      if (top) {
+        const badge = document.createElement("span");
+        badge.className = "slot-badge slot-badge-top";
+        badge.textContent = top;
+        button.append(badge);
+      }
+      const bottom = inventoryBottomBadge(opts.item);
+      if (bottom) {
+        const badge = document.createElement("span");
+        badge.className = "slot-badge slot-badge-bottom";
+        badge.textContent = bottom;
+        button.append(badge);
+      }
+      button.addEventListener("click", () => {
+        this.selectedInventoryItemId =
+          this.selectedInventoryItemId === opts.item!.uid ? null : opts.item!.uid;
+        this.renderInventory(this.getState());
+      });
+    } else {
+      button.disabled = true;
+    }
+
+    return button;
+  }
+
+  private renderItemActionCard(item: InventoryItem, state: OverlayState): HTMLElement {
+    const card = document.createElement("article");
+    card.className = "item-action-card";
 
     const icon = document.createElement("div");
-    icon.className = "item-icon";
-    const sprite = this.assets?.spriteForItem(item.id) ?? null;
-    const iconStyle = sprite ? this.assets?.cssStyleForSprite(sprite, sprite === "healingPotion" ? 3 : 2) : null;
-    if (iconStyle) {
-      const spriteNode = document.createElement("div");
-      spriteNode.className = "item-sprite";
-      Object.assign(spriteNode.style, iconStyle);
-      icon.append(spriteNode);
+    icon.className = "item-action-icon";
+    const sprite = this.assets
+      ? this.assets.spriteForItem(item.defId) ?? this.assets.spriteForItemType(item.type)
+      : null;
+    const style = sprite
+      ? this.assets?.cssStyleForSprite(
+          sprite,
+          sprite === "healingPotion" || sprite === "strengthPotion" ? 4 : 3,
+        )
+      : null;
+    if (style) {
+      const node = document.createElement("span");
+      node.className = "item-sprite";
+      Object.assign(node.style, style);
+      icon.append(node);
     } else {
       icon.textContent = item.name.slice(0, 1).toUpperCase();
     }
 
-    const title = document.createElement("div");
-    title.className = "item-title";
-    const name = document.createElement("strong");
-    name.textContent = item.name;
-    const type = document.createElement("span");
-    type.textContent = equipped ? `${item.type} equipped` : item.type;
-    title.append(name, type);
+    const copy = document.createElement("div");
+    copy.className = "item-action-copy";
+    const title = document.createElement("h3");
+    title.textContent = item.name;
+    const detail = document.createElement("p");
+    detail.textContent = itemLongDescription(item);
+    copy.append(title, detail);
 
-    const detail = document.createElement("div");
-    detail.className = "item-detail";
-    detail.textContent = itemDescription(item);
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "item-card-close";
+    close.textContent = "X";
+    close.setAttribute("aria-label", "Close item actions");
+    close.addEventListener("click", () => {
+      this.selectedInventoryItemId = null;
+      this.renderInventory(this.getState());
+    });
 
     const controls = document.createElement("div");
-    controls.className = "item-controls";
-    if (item.type === "weapon" || item.type === "armor") {
-      controls.append(this.itemButton("Equip", () => this.actions.equip(item.id)));
+    controls.className = "item-action-controls";
+    const equipped = item.uid === state.inventory.equippedWeaponId || item.uid === state.inventory.equippedArmorId;
+    if ((item.type === "weapon" || item.type === "armor") && !equipped) {
+      controls.append(this.itemButton("Equip", () => this.actions.equip(item.uid)));
     }
-    if (item.type === "potion" || item.type === "food") {
-      controls.append(this.itemButton("Consume", () => this.actions.consume(item.id)));
+    if (item.type === "potion") {
+      controls.append(this.itemButton("Quaff", () => this.actions.consume(item.uid)));
+    } else if (item.type === "food") {
+      controls.append(this.itemButton("Eat", () => this.actions.consume(item.uid)));
     }
-    controls.append(this.itemButton("Drop", () => this.actions.drop(item.id)));
+    controls.append(this.itemButton("Drop", () => this.actions.drop(item.uid)));
 
-    row.append(icon, title, detail, controls);
-    return row;
+    card.append(icon, copy, close, controls);
+    return card;
   }
 
   private itemButton(label: string, action: () => boolean): HTMLButtonElement {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "mini-button";
+    button.className = "item-action-button";
     button.textContent = label;
     button.addEventListener("click", () => {
-      if (action()) this.render();
+      if (action()) {
+        this.selectedInventoryItemId = null;
+        this.render();
+      }
     });
     return button;
   }
 }
 
-function itemDescription(item: ItemDef): string {
-  const strength = typeof item.strengthRequired === "number" ? `, STR ${item.strengthRequired}` : "";
-  if (item.type === "weapon") return `Damage +${item.damageMin ?? 0}-${item.damageMax ?? 0}${strength}`;
-  if (item.type === "armor") return `Armor +${item.defense ?? 0}${strength}`;
-  if (item.type === "potion" && typeof item.strengthBonus === "number") {
-    return `Strength +${item.strengthBonus}`;
+function groupedInventoryItems(
+  state: OverlayState,
+  tab: InventoryTab,
+): Array<{ item: InventoryItem; count: number }> {
+  const equippedIds = new Set(
+    [state.inventory.equippedWeaponId, state.inventory.equippedArmorId].filter(
+      (id): id is string => id !== null,
+    ),
+  );
+  const grouped = new Map<string, { item: InventoryItem; count: number }>();
+  for (const item of state.inventory.items) {
+    if (equippedIds.has(item.uid)) continue;
+    if (tab === "equipment" && item.type !== "weapon" && item.type !== "armor") continue;
+    if (tab === "consumables" && item.type !== "potion" && item.type !== "food") continue;
+    const existing = grouped.get(item.defId);
+    if (existing) existing.count += item.quantity ?? 1;
+    else grouped.set(item.defId, { item, count: item.quantity ?? 1 });
   }
-  if (item.type === "potion") return `Heals ${item.heal ?? 0}`;
+  return [...grouped.values()];
+}
+
+function inventoryTopBadge(item: InventoryItem, count: number): string {
+  if (count > 1) return String(count);
+  if (item.type === "weapon" || item.type === "armor") {
+    return `:${strengthRequirement(item.def, item)}`;
+  }
+  if (item.type === "potion" && typeof item.def.heal === "number") return `${item.def.heal}`;
+  return "";
+}
+
+function inventoryBottomBadge(item: InventoryItem): string {
+  if (item.type === "weapon") return `+${meleeWeaponDamage(item.def, item).damageMax}`;
+  if (item.type === "armor") return `+${armorDamageReduction(item.def, item).drMax}`;
+  if (item.type === "potion" && typeof item.def.strengthBonus === "number") return `+${item.def.strengthBonus}`;
+  return "";
+}
+
+function itemDescription(item: InventoryItem): string {
+  const level = item.levelKnown ? `+${item.level}` : "unidentified";
+  const strength = item.type === "weapon" || item.type === "armor"
+    ? `, STR ${strengthRequirement(item.def, item)}`
+    : "";
+  if (item.type === "weapon") {
+    const damage = meleeWeaponDamage(item.def, item);
+    return `Damage ${damage.damageMin}-${damage.damageMax}, ${level}${strength}`;
+  }
+  if (item.type === "armor") {
+    const armor = armorDamageReduction(item.def, item);
+    return `Armor ${armor.drMin}-${armor.drMax}, ${level}${strength}`;
+  }
+  if (item.type === "potion" && typeof item.def.strengthBonus === "number") {
+    return `Strength +${item.def.strengthBonus}`;
+  }
+  if (item.type === "potion") return `Heals ${item.def.heal ?? 0}`;
   if (item.type === "food") return "Ration";
   return "Miscellaneous";
+}
+
+function itemLongDescription(item: InventoryItem): string {
+  const description = typeof item.def.description === "string" ? item.def.description : "";
+  const mechanics = itemDescription(item);
+  return description ? `${description} ${mechanics}.` : mechanics;
 }
 
 function portraitForHero(sprite: SpriteKey): SpriteKey {
   return sprite === "mageHero" ? "magePortrait" : "heroPortrait";
 }
-
-

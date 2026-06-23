@@ -40,9 +40,10 @@ const COLORS = {
 };
 
 const IDLE_START_DELAY_SECONDS = 1.4;
-const STRIKE_DURATION_SECONDS = 0.15;
-const MOVE_TWEEN_DURATION_MS = 220;
+const STRIKE_ANIMATION_DURATION_SECONDS = 0.42;
+const MOVE_TWEEN_DURATION_MS = 180;
 const DAMAGE_POPUP_DURATION_SECONDS = 1;
+const DEATH_ANIMATION_EXTRA_SECONDS = 0.12;
 const PICKUP_ANIMATION_DURATION_SECONDS = 0.5;
 const HERO_DRAW_SCALE = 0.78;
 // SPD CharSprite.worldToCamera raises actors by 6px on a 16px tile so their
@@ -83,6 +84,12 @@ export interface ActorMoveAnimationEvent {
   toCell: number;
 }
 
+export interface ActorDeathAnimationEvent {
+  actorId: string;
+  cell: number;
+  name: string;
+}
+
 export interface ItemPickupAnimationEvent {
   itemId: string;
   cell: number;
@@ -94,6 +101,10 @@ interface CombatStrikeAnimation extends CombatStrikeAnimationEvent {
 
 interface ActorMoveAnimation extends ActorMoveAnimationEvent {
   startedAtMs: number;
+}
+
+interface ActorDeathAnimation extends ActorDeathAnimationEvent {
+  startedAt: number | null;
 }
 
 interface DamagePopup {
@@ -109,6 +120,7 @@ interface ItemPickupAnimation extends ItemPickupAnimationEvent {
 
 const activeStrikes: CombatStrikeAnimation[] = [];
 const activeMoves = new Map<string, ActorMoveAnimation>();
+const activeDeaths: ActorDeathAnimation[] = [];
 const actorFacingX = new Map<string, -1 | 1>();
 const activeDamagePopups: DamagePopup[] = [];
 const activeItemPickups: ItemPickupAnimation[] = [];
@@ -131,6 +143,11 @@ export function queueActorMoveAnimation(event: ActorMoveAnimationEvent): void {
   });
 }
 
+export function queueActorDeathAnimation(event: ActorDeathAnimationEvent): void {
+  activeMoves.delete(event.actorId);
+  activeDeaths.push({ ...event, startedAt: null });
+}
+
 export function queueItemPickupAnimation(event: ItemPickupAnimationEvent): void {
   activeItemPickups.push({ ...event, startedAt: null });
 }
@@ -138,6 +155,7 @@ export function queueItemPickupAnimation(event: ItemPickupAnimationEvent): void 
 export function clearCombatAnimations(): void {
   activeStrikes.length = 0;
   activeMoves.clear();
+  activeDeaths.length = 0;
   actorFacingX.clear();
   activeDamagePopups.length = 0;
   activeItemPickups.length = 0;
@@ -151,9 +169,13 @@ export function detachMapCameraBy(dx: number, dy: number): void {
   };
 }
 
-export function snapMapCameraToHero(): void {
+export function snapMapCameraToHero(hard = false): void {
   isCameraDetached = false;
   detachedCameraPan = { x: 0, y: 0 };
+  if (hard) {
+    cameraFocusX = null;
+    cameraFocusY = null;
+  }
 }
 
 export function isMapCameraDetached(): boolean {
@@ -162,7 +184,9 @@ export function isMapCameraDetached(): boolean {
 
 export let cameraFocusX: number | null = null;
 export let cameraFocusY: number | null = null;
-const CAMERA_PAN_INTENSITY = 8.0;
+// SPD's Camera.panFollow continuously eases toward the target. Keeping this
+// as a damped glide avoids the sticky/deadzone jumps that feel harsh on mobile.
+const CAMERA_PAN_INTENSITY = 7.5;
 
 export function computeMapSceneViewport(
   viewW: number,
@@ -262,8 +286,9 @@ export function drawMapScene(
     cameraFocusY = targetY;
   } else {
     const dt = Math.min(0.1, frame.dt);
-    cameraFocusX += (targetX - cameraFocusX) * Math.min(1, dt * CAMERA_PAN_INTENSITY);
-    cameraFocusY += (targetY - cameraFocusY) * Math.min(1, dt * CAMERA_PAN_INTENSITY);
+    const step = 1 - Math.exp(-dt * CAMERA_PAN_INTENSITY);
+    cameraFocusX += (targetX - cameraFocusX) * step;
+    cameraFocusY += (targetY - cameraFocusY) * step;
   }
 
   const vp = computeMapSceneViewport(
@@ -276,6 +301,7 @@ export function drawMapScene(
   const ts = vp.tileSize;
   const idleElapsed = idleElapsedAfterStillness(frame.elapsed, view);
   updateCombatAnimations(frame.elapsed);
+  updateDeathAnimations(frame.elapsed);
   updateItemPickupAnimations(frame.elapsed);
   const minX = Math.max(0, Math.floor(-vp.offsetX / ts) - 1);
   const minY = Math.max(0, Math.floor(-vp.offsetY / ts) - 1);
@@ -429,7 +455,27 @@ export function drawMapScene(
       enemy.id,
       enemySprite,
       view.depth,
-      frame.elapsed,
+    );
+  }
+
+  for (const death of activeDeaths) {
+    if (death.actorId === "hero" || !view.explored.has(death.cell)) continue;
+    const sprite = spriteForDeathName(death.name);
+    drawCell(
+      ctx,
+      assets,
+      vp,
+      grid,
+      death.cell,
+      sprite,
+      COLORS.enemyHunt,
+      COLORS.enemyEdge,
+      {
+        elapsed: 0,
+        key: `${death.actorId}:death`,
+        actorId: death.actorId,
+        frameElapsed: frame.elapsed,
+      },
     );
   }
 
@@ -626,7 +672,7 @@ function drawCell(
   const ts = vp.tileSize;
   const isActor = motion?.actorId !== undefined;
   const visual = motion?.actorId
-    ? visualOffsetForActor(motion.actorId, grid, ts, motion.frameElapsed)
+    ? visualOffsetForActor(motion.actorId, grid, ts)
     : { pixelOffsetX: 0, pixelOffsetY: 0, movingElapsed: null };
   const pixelX = vp.offsetX + grid.xOf(cell) * ts + visual.pixelOffsetX;
   const pixelY = vp.offsetY + grid.yOf(cell) * ts + visual.pixelOffsetY;
@@ -708,11 +754,10 @@ function drawEnemyHealthBar(
   actorId: string,
   sprite: SpriteKey,
   depth: number,
-  elapsed: number,
 ): void {
   if (maxHealth <= 0) return;
   const ts = vp.tileSize;
-  const offset = visualOffsetForActor(actorId, grid, ts, elapsed);
+  const offset = visualOffsetForActor(actorId, grid, ts);
   const size = actorSpriteSize(assets, sprite, ts, 1, depth);
   const ratio = Math.max(0, Math.min(1, hp / maxHealth));
   const barWidth = Math.max(10, Math.round(ts * 0.58));
@@ -816,7 +861,11 @@ interface SpriteMotion {
   dh: number;
 }
 
-function spriteMotion(sprite: SpriteKey, idle?: IdleState): SpriteMotion {
+function spriteMotion(sprite: SpriteKey, idle?: IdleState | ActorDrawMotion): SpriteMotion {
+  const dying = deathMotion(sprite, idle);
+  if (dying) return dying;
+  const attacking = attackMotion(sprite, idle);
+  if (attacking) return attacking;
   if (idle && "movingElapsed" in idle && typeof idle.movingElapsed === "number") {
     return runMotion(sprite, idle.movingElapsed);
   }
@@ -851,6 +900,55 @@ function idleMotion(sprite: SpriteKey, idle?: IdleState): SpriteMotion {
   return still;
 }
 
+function deathMotion(sprite: SpriteKey, idle?: IdleState | ActorDrawMotion): SpriteMotion | null {
+  if (!isActorDrawMotion(idle)) return null;
+  const death = deathAnimation(sprite);
+  if (!death) return null;
+  let active: ActorDeathAnimation | null = null;
+  for (let i = activeDeaths.length - 1; i >= 0; i--) {
+    const candidate = activeDeaths[i]!;
+    if (candidate.actorId === idle.actorId && candidate.startedAt !== null) {
+      active = candidate;
+      break;
+    }
+  }
+  if (!active) return null;
+
+  const elapsed = Math.max(0, idle.frameElapsed - active.startedAt!);
+  const frameIndex = Math.min(death.frames.length - 1, Math.floor(elapsed * death.fps));
+  return { frameOffset: death.frames[frameIndex]!, dx: 0, dy: 0, dw: 0, dh: 0 };
+}
+
+function attackMotion(sprite: SpriteKey, idle?: IdleState | ActorDrawMotion): SpriteMotion | null {
+  if (!isActorDrawMotion(idle)) return null;
+  const attack = attackAnimation(sprite);
+  if (!attack) return null;
+
+  let active: CombatStrikeAnimation | null = null;
+  for (let i = activeStrikes.length - 1; i >= 0; i--) {
+    const strike = activeStrikes[i]!;
+    if (strike.attackerId === idle.actorId && strike.startedAt !== null) {
+      active = strike;
+      break;
+    }
+  }
+  if (!active) return null;
+
+  const elapsed = Math.max(0, idle.frameElapsed - active.startedAt!);
+  const frameIndex = Math.min(attack.frames.length - 1, Math.floor(elapsed * attack.fps));
+  return { frameOffset: attack.frames[frameIndex]!, dx: 0, dy: 0, dw: 0, dh: 0 };
+}
+
+function isActorDrawMotion(idle?: IdleState | ActorDrawMotion): idle is ActorDrawMotion {
+  return Boolean(
+    idle &&
+    "actorId" in idle &&
+    idle.actorId &&
+    "frameElapsed" in idle &&
+    typeof idle.frameElapsed === "number",
+  );
+}
+
 function runMotion(sprite: SpriteKey, movingElapsed: number): SpriteMotion {
   const run = runAnimation(sprite);
   if (!run) return { frameOffset: 0, dx: 0, dy: 0, dw: 0, dh: 0 };
@@ -874,6 +972,51 @@ function runAnimation(sprite: SpriteKey): { frames: number[]; fps: number } | nu
   return null;
 }
 
+function attackAnimation(sprite: SpriteKey): { frames: number[]; fps: number } | null {
+  if (sprite === "hero" || sprite === "mageHero") {
+    // HeroSprite.java: attack = 15 fps; attack.frames(film, 13,14,15,0).
+    return { frames: [13, 14, 15, 0], fps: 15 };
+  }
+  if (sprite === "rat") {
+    // RatSprite.java: attack = 15 fps; attack.frames(frames, 2,3,4,5,0).
+    return { frames: [2, 3, 4, 5, 0], fps: 15 };
+  }
+  if (sprite === "zombie") {
+    // UndeadSprite.java: attack = 15 fps; attack.frames(frames, 14,15,16).
+    return { frames: [14, 15, 16], fps: 15 };
+  }
+  return null;
+}
+
+function deathAnimation(sprite: SpriteKey): { frames: number[]; fps: number } | null {
+  if (sprite === "hero" || sprite === "mageHero") {
+    // HeroSprite.java: die = 20 fps; die.frames(film, 8,9,10,11,12,11).
+    return { frames: [8, 9, 10, 11, 12, 11], fps: 20 };
+  }
+  if (sprite === "rat") {
+    // RatSprite.java: die = 10 fps; die.frames(frames, 11,12,13,14).
+    return { frames: [11, 12, 13, 14], fps: 10 };
+  }
+  if (sprite === "zombie") {
+    // UndeadSprite.java: die = 12 fps; die.frames(frames, 10,11,12,13).
+    return { frames: [10, 11, 12, 13], fps: 12 };
+  }
+  return null;
+}
+
+function deathDuration(sprite: SpriteKey): number {
+  const death = deathAnimation(sprite);
+  return death ? death.frames.length / death.fps + DEATH_ANIMATION_EXTRA_SECONDS : 0.35;
+}
+
+function spriteForDeathName(name: string): SpriteKey {
+  const normalized = name.toLowerCase();
+  if (normalized.includes("mage")) return "mageHero";
+  if (normalized.includes("hero") || normalized.includes("warrior")) return "hero";
+  if (normalized.includes("zombie") || normalized.includes("undead")) return "zombie";
+  return "rat";
+}
+
 function idleElapsedAfterStillness(elapsed: number, view: MapView): number {
   const signature = activitySignature(view);
   if (previousActivitySignature !== signature) {
@@ -893,8 +1036,22 @@ function updateCombatAnimations(elapsed: number): void {
     popup.startedAt ??= elapsed;
   }
 
-  removeExpired(activeStrikes, elapsed, STRIKE_DURATION_SECONDS);
+  removeExpired(activeStrikes, elapsed, STRIKE_ANIMATION_DURATION_SECONDS);
   removeExpired(activeDamagePopups, elapsed, DAMAGE_POPUP_DURATION_SECONDS);
+}
+
+function updateDeathAnimations(elapsed: number): void {
+  for (const death of activeDeaths) {
+    death.startedAt ??= elapsed;
+  }
+  for (let i = activeDeaths.length - 1; i >= 0; i--) {
+    const death = activeDeaths[i]!;
+    if (death.startedAt === null) continue;
+    const sprite = spriteForDeathName(death.name);
+    if (elapsed - death.startedAt >= deathDuration(sprite)) {
+      activeDeaths.splice(i, 1);
+    }
+  }
 }
 
 function updateItemPickupAnimations(elapsed: number): void {
@@ -921,7 +1078,6 @@ function visualOffsetForActor(
   actorId: string,
   grid: Grid,
   tileSize: number,
-  elapsed: number,
 ): { pixelOffsetX: number; pixelOffsetY: number; movingElapsed: number | null } {
   let pixelOffsetX = 0;
   let pixelOffsetY = 0;
@@ -948,25 +1104,15 @@ function visualOffsetForActor(
     }
   }
   for (const strike of activeStrikes) {
-    if (strike.attackerId !== actorId || strike.startedAt === null) continue;
+    if (strike.startedAt === null) continue;
     const attackerX = grid.xOf(strike.attackerCell);
     const defenderX = grid.xOf(strike.defenderCell);
+    if (strike.attackerId !== actorId) continue;
+    // SPD's CharSprite.attack only turns and plays the attack frames. It does
+    // not tween the actor's position; the sword/staff swing is in the sheet.
     if (defenderX !== attackerX) {
       actorFacingX.set(actorId, defenderX < attackerX ? -1 : 1);
     }
-    const progress = Math.max(
-      0,
-      Math.min(1, (elapsed - strike.startedAt) / STRIKE_DURATION_SECONDS),
-    );
-    const lunge = progress < 0.42
-      ? easeOutCubic(progress / 0.42)
-      : 1 - easeOutCubic((progress - 0.42) / 0.58);
-    const dx = grid.xOf(strike.defenderCell) - grid.xOf(strike.attackerCell);
-    const dy = grid.yOf(strike.defenderCell) - grid.yOf(strike.attackerCell);
-    const len = Math.max(1, Math.hypot(dx, dy));
-    const reach = tileSize * 0.34 * lunge;
-    pixelOffsetX += (dx / len) * reach;
-    pixelOffsetY += (dy / len) * reach;
   }
   return { pixelOffsetX, pixelOffsetY, movingElapsed };
 }
@@ -1013,11 +1159,6 @@ function drawItemPickupAnimations(
 
 function nowMs(): number {
   return globalThis.performance?.now?.() ?? Date.now();
-}
-
-function easeOutCubic(t: number): number {
-  const clamped = Math.max(0, Math.min(1, t));
-  return 1 - Math.pow(1 - clamped, 3);
 }
 
 function drawDamagePopups(

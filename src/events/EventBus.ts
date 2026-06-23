@@ -43,6 +43,8 @@ export interface GameEvents {
   };
   /** An actor's core grid cell changed instantly; render may animate it. */
   "actor:move": { actorId: string; fromCell: number; toCell: number };
+  /** An actor died; render may play the sprite's death animation. */
+  "actor:death": { actorId: string; cell: number; name: string };
   /** An item was picked up from a dungeon cell; render may fly it to the UI. */
   "item:pickup": { itemId: string; cell: number };
   /** The hero gained at least one level. */
