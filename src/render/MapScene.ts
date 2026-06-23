@@ -95,6 +95,7 @@ interface DamagePopup {
 
 const activeStrikes: CombatStrikeAnimation[] = [];
 const activeMoves = new Map<string, ActorMoveAnimation>();
+const actorFacingX = new Map<string, -1 | 1>();
 const activeDamagePopups: DamagePopup[] = [];
 
 export function queueCombatStrikeAnimation(event: CombatStrikeAnimationEvent): void {
@@ -118,6 +119,7 @@ export function queueActorMoveAnimation(event: ActorMoveAnimationEvent): void {
 export function clearCombatAnimations(): void {
   activeStrikes.length = 0;
   activeMoves.clear();
+  actorFacingX.clear();
   activeDamagePopups.length = 0;
 }
 
@@ -575,12 +577,13 @@ function drawCell(
   const drawMotion = motion && visual.movingElapsed !== null
     ? { ...motion, movingElapsed: visual.movingElapsed }
     : motion;
+  const facingX = motion?.actorId ? actorFacingX.get(motion.actorId) ?? 1 : 1;
 
   if (isActor) {
     drawActorShadow(ctx, pixelX, pixelY, ts, visualScale, perspectiveRaise);
   }
 
-  if (assets && drawSprite(ctx, assets, sprite, x, y, size.width, 1, drawMotion, depth, size.height)) {
+  if (assets && drawSprite(ctx, assets, sprite, x, y, size.width, 1, drawMotion, depth, size.height, facingX < 0)) {
     return;
   }
 
@@ -687,6 +690,7 @@ function drawSprite(
   idle?: IdleState,
   depth = 1,
   height = size,
+  flipX = false,
 ): boolean {
   const image = assets.imageFor(sprite, depth);
   if (!image) return false;
@@ -698,17 +702,33 @@ function drawSprite(
   ctx.save();
   ctx.globalAlpha = alpha;
   ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(
-    image,
-    src.x,
-    src.y,
-    src.w,
-    src.h,
-    dx,
-    dy,
-    size + motion.dw,
-    height + motion.dh,
-  );
+  if (flipX) {
+    ctx.translate(dx + size + motion.dw, dy);
+    ctx.scale(-1, 1);
+    ctx.drawImage(
+      image,
+      src.x,
+      src.y,
+      src.w,
+      src.h,
+      0,
+      0,
+      size + motion.dw,
+      height + motion.dh,
+    );
+  } else {
+    ctx.drawImage(
+      image,
+      src.x,
+      src.y,
+      src.w,
+      src.h,
+      dx,
+      dy,
+      size + motion.dw,
+      height + motion.dh,
+    );
+  }
   ctx.restore();
   return true;
 }
@@ -850,6 +870,9 @@ function visualOffsetForActor(
       const fromY = grid.yOf(move.fromCell);
       const toX = grid.xOf(move.toCell);
       const toY = grid.yOf(move.toCell);
+      if (toX !== fromX) {
+        actorFacingX.set(actorId, toX < fromX ? -1 : 1);
+      }
       const visualX = fromX + (toX - fromX) * progress;
       const visualY = fromY + (toY - fromY) * progress;
       pixelOffsetX += (visualX - toX) * tileSize;

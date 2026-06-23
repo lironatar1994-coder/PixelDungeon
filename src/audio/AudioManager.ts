@@ -19,6 +19,7 @@ const CUES: Record<AudioCue, CueConfig> = {
   descend: { file: "descend.mp3", volume: 0.5 },
   door: { file: "door_open.mp3", volume: 0.35 },
   pickup: { file: "item.mp3", volume: 0.45 },
+  step: { file: "step.mp3", volume: 0.24 },
   health_warn: { file: "health_warn.mp3", volume: 0.36 },
   health_critical: { file: "health_critical.mp3", volume: 0.42 },
   levelup: { file: "levelup.mp3", volume: 0.48 },
@@ -40,6 +41,9 @@ export class AudioManager {
     this.unsubscribers.push(
       bus.on("audio:sfx", ({ cue }) => this.play(cue)),
       bus.on("combat:strike", ({ hit }) => this.play(hit ? "hit" : "miss")),
+      bus.on("actor:move", ({ actorId }) => {
+        if (actorId === "hero") this.play("step");
+      }),
       bus.on("hero:damaged", ({ hp }) => {
         if (hp <= 0) return;
         this.play(hp <= 5 ? "health_critical" : "health_warn");

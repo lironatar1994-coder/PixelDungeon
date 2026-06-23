@@ -61,6 +61,7 @@ export interface GameEvents {
       | "descend"
       | "door"
       | "pickup"
+      | "step"
       | "health_warn"
       | "health_critical"
       | "levelup";
