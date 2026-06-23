@@ -55,6 +55,7 @@ const RAISED_DOORS = sheetIndex(1, 8);
 const RAISED_DOOR = RAISED_DOORS;
 const RAISED_DOOR_OPEN = RAISED_DOORS + 1;
 const RAISED_DOOR_SIDEWAYS = RAISED_DOORS + 4;
+const WATER = sheetIndex(1, 3);
 const RAISED_WALLS = sheetIndex(1, 6);
 const RAISED_WALL_DOOR = RAISED_WALLS + 8;
 const WALLS_INTERNAL = sheetIndex(1, 10);
@@ -337,7 +338,12 @@ export function drawMapScene(
         let spriteKey: SpriteKey | null = assets.spriteForTerrain(terrain, view.depth);
         let tileIndex: number | null = null;
         let overhangIndex: number | null = null;
-        if (terrain === Terrain.WALL) {
+        let drewTerrain = false;
+        if (terrain === Terrain.WATER) {
+          drewTerrain = drawSprite(ctx, assets, "water", drawX, drawY, ts, 1, undefined, view.depth);
+          spriteKey = null;
+          tileIndex = stitchWaterTile(grid, x, y);
+        } else if (terrain === Terrain.WALL) {
           const southTerrain = terrainAt(grid, x, y + 1);
           if (southTerrain === Terrain.DOOR) {
             const southCell = grid.cell(x, y + 1);
@@ -373,9 +379,10 @@ export function drawMapScene(
         }
 
         if (tileIndex !== null) {
-          drawTileIndex(ctx, assets, tileIndex, drawX, drawY, ts, 1, view.depth);
+          const drewTile = drawTileIndex(ctx, assets, tileIndex, drawX, drawY, ts, 1, view.depth);
+          if (terrain !== Terrain.WATER) drewTerrain = drewTile;
         } else if (spriteKey !== null) {
-          drawSprite(
+          drewTerrain = drawSprite(
             ctx,
             assets,
             spriteKey,
@@ -386,6 +393,10 @@ export function drawMapScene(
             undefined,
             view.depth,
           );
+        }
+        if (!drewTerrain) {
+          ctx.fillStyle = visible ? VISIBLE[terrain] : EXPLORED[terrain];
+          ctx.fillRect(drawX, drawY, ts, ts);
         }
 
         if (overhangIndex !== null) {
@@ -572,6 +583,19 @@ function isWallStitchable(grid: Grid, x: number, y: number): boolean {
 
 function isWalkableTerrain(terrain: Terrain): boolean {
   return terrain === Terrain.FLOOR || terrain === Terrain.DOOR;
+}
+
+function stitchWaterTile(grid: Grid, x: number, y: number): number {
+  let result = WATER;
+  if (isWaterEdgeTerrain(terrainAt(grid, x, y - 1))) result += 1;
+  if (isWaterEdgeTerrain(terrainAt(grid, x + 1, y))) result += 2;
+  if (isWaterEdgeTerrain(terrainAt(grid, x, y + 1))) result += 4;
+  if (isWaterEdgeTerrain(terrainAt(grid, x - 1, y))) result += 8;
+  return result;
+}
+
+function isWaterEdgeTerrain(terrain: Terrain | null): boolean {
+  return terrain === Terrain.EMPTY || terrain === Terrain.FLOOR || terrain === Terrain.DOOR || terrain === Terrain.GRASS;
 }
 
 function drawWallCastShadow(

@@ -7,6 +7,11 @@ export type SpriteSheetKey =
   | "tilesCaves"
   | "tilesCity"
   | "tilesHalls"
+  | "waterSewers"
+  | "waterPrison"
+  | "waterCaves"
+  | "waterCity"
+  | "waterHalls"
   | "warrior"
   | "mage"
   | "rat"
@@ -94,6 +99,11 @@ const SHEET_URLS: Record<SpriteSheetKey, string> = {
   tilesCaves: `${BASE}assets/tiles_caves.png`,
   tilesCity: `${BASE}assets/tiles_city.png`,
   tilesHalls: `${BASE}assets/tiles_halls.png`,
+  waterSewers: `${BASE}assets/water0.png`,
+  waterPrison: `${BASE}assets/water1.png`,
+  waterCaves: `${BASE}assets/water2.png`,
+  waterCity: `${BASE}assets/water3.png`,
+  waterHalls: `${BASE}assets/water4.png`,
   warrior: `${BASE}assets/warrior.png`,
   mage: `${BASE}assets/mage.png`,
   rat: `${BASE}assets/rat.png`,
@@ -125,7 +135,7 @@ const SPRITES: Record<SpriteKey, SpriteRect> = {
   floor: { sheet: "tiles", x: 0, y: 0, w: 16, h: 16 },
   floorDeco: { sheet: "tiles", x: 16, y: 0, w: 16, h: 16 },
   grass: { sheet: "tiles", x: 32, y: 0, w: 16, h: 16 },
-  water: { sheet: "tiles", x: 0, y: 32, w: 16, h: 16 },
+  water: { sheet: "waterSewers", x: 0, y: 0, w: 16, h: 16 },
   entrance: sheetRect("tiles", xy(1, 1) + 16, 16),
   exit: sheetRect("tiles", xy(1, 1) + 17, 16),
 
@@ -269,6 +279,9 @@ export class AssetLoader implements SpriteSheetAssets {
 
   sourceRect(key: SpriteKey, depth = 1): SpriteRect {
     const rect = SPRITES[key];
+    if (key === "water") {
+      return { ...rect, sheet: waterSheetForDepth(depth) };
+    }
     if (isTerrainSprite(key)) {
       return { ...rect, sheet: tileSheetForDepth(depth) };
     }
@@ -304,4 +317,12 @@ function tileSheetForDepth(depth: number): SpriteSheetKey {
   if (depth >= 11) return "tilesCaves";
   if (depth >= 6) return "tilesPrison";
   return "tiles";
+}
+
+function waterSheetForDepth(depth: number): SpriteSheetKey {
+  if (depth >= 21) return "waterHalls";
+  if (depth >= 16) return "waterCity";
+  if (depth >= 11) return "waterCaves";
+  if (depth >= 6) return "waterPrison";
+  return "waterSewers";
 }
