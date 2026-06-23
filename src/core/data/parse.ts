@@ -59,6 +59,32 @@ export function parseEnemy(raw: unknown): EnemyDef | null {
     return null;
   }
   const damageMin = num(rec, "damageMin", 1, { int: true, min: 0 });
+  
+  let deathCauses: import("./types").EnemyDeathCauses | undefined;
+  if ("deathCauses" in rec) {
+    const rawCauses = asRecord(rec.deathCauses);
+    if (rawCauses) {
+      deathCauses = {};
+      if (Array.isArray(rawCauses.normal)) {
+        deathCauses.normal = rawCauses.normal.filter(s => typeof s === "string");
+      }
+      if (Array.isArray(rawCauses.crit)) {
+        deathCauses.crit = rawCauses.crit.filter(s => typeof s === "string");
+      }
+      if (rawCauses.skills) {
+        const rawSkills = asRecord(rawCauses.skills);
+        if (rawSkills) {
+          deathCauses.skills = {};
+          for (const [k, v] of Object.entries(rawSkills)) {
+            if (Array.isArray(v)) {
+              deathCauses.skills[k] = v.filter(s => typeof s === "string");
+            }
+          }
+        }
+      }
+    }
+  }
+
   return {
     id,
     name: str(rec, "name", id),
@@ -77,6 +103,7 @@ export function parseEnemy(raw: unknown): EnemyDef | null {
     expReward: num(rec, "expReward", 1, { int: true, min: 0 }),
     maxLevelCap: num(rec, "maxLevelCap", 30, { int: true, min: 0 }),
     description: str(rec, "description", ""),
+    deathCauses,
   };
 }
 

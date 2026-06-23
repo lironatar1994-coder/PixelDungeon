@@ -160,7 +160,8 @@ export class GameWorld {
   private hero!: Hero;
   private inventoryRef!: Inventory;
   private enemyList: Enemy[] = [];
-  private heroDead = false;
+  public heroDead = false;
+  public deathReason: string | undefined;
   private readonly logLines: string[] = [];
 
   constructor(seed: string, content: ContentDatabaseType, opts: WorldOptions = {}) {
@@ -462,6 +463,11 @@ export class GameWorld {
     if (!this.hero.stats.alive) {
       this.heroDead = true;
       this.pushLog(`You have died on depth ${this.depth}.`);
+      const normalCauses = attacker.def.deathCauses?.normal;
+      if (normalCauses && normalCauses.length > 0) {
+        const index = Math.floor(this.combatRng.next() * normalCauses.length);
+        this.deathReason = normalCauses[index]?.replace("{name}", attacker.name);
+      }
     }
   }
 

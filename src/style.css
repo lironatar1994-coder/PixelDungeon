@@ -83,6 +83,13 @@ body {
   overflow-x: hidden;
 }
 
+#main-menu[data-hero-preview="warrior"] {
+  background:
+    linear-gradient(180deg, rgba(3, 4, 6, 0.18), rgba(0, 0, 0, 0.72)),
+    url("../warrior_full_bg.png") center center / cover no-repeat,
+    #060707;
+}
+
 #main-menu::before {
   content: "";
   position: absolute;
@@ -91,6 +98,12 @@ body {
     linear-gradient(180deg, rgba(0, 0, 0, 0.42), transparent 24%, rgba(0, 0, 0, 0.76)),
     repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 4px);
   pointer-events: none;
+}
+
+#main-menu[data-hero-preview="warrior"]::before {
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.24), transparent 20%, rgba(0, 0, 0, 0.7)),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 5px);
 }
 
 #main-menu::after {

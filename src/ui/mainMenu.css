@@ -1,0 +1,289 @@
+/*
+ * Main menu styling (scoped to #main-menu.mm-root so it can't be clobbered by
+ * leftover rules). Pure CSS — animated dungeon backdrop, glowing logo, SPD-style
+ * framed buttons and sub-windows. No image assets, so nothing can render garbled.
+ */
+
+#main-menu.mm-root {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100vw;
+  height: 100vh;
+  box-sizing: border-box;
+  overflow-x: hidden;
+  overflow-y: auto;
+  color: #f0eadb;
+  font-family: "SPD Pixel", "Trebuchet MS", "Segoe UI", sans-serif;
+  text-shadow: 1px 1px 0 #000;
+  -webkit-font-smoothing: none;
+  font-smooth: never;
+  background: #060706;
+}
+
+/* Frames are mutually exclusive "levels": only the active one is shown. An
+ * explicit display on a panel defeats the bare [hidden] attribute, so force it. */
+#main-menu.mm-root [hidden] {
+  display: none !important;
+}
+
+/* Each frame fades/slides in so switching levels feels like a transition. */
+#main-menu.mm-root .mm-title-view,
+#main-menu.mm-root .mm-window {
+  animation: mm-frame-in 0.2s ease-out both;
+}
+@keyframes mm-frame-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* --- drifting dungeon backdrop --- */
+#main-menu.mm-root .mm-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-color: #090b0a;
+  background-image:
+    radial-gradient(120% 62% at 50% 10%, rgba(86, 210, 138, 0.12), transparent 60%),
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.55) 0 2px, transparent 2px 32px),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.022) 0 1px, transparent 1px 64px),
+    linear-gradient(180deg, #161b1d, #0a0d0d 58%, #050606);
+  background-size: 100% 100%, 100% 32px, 64px 100%, 100% 100%;
+  animation: mm-drift 40s linear infinite;
+}
+#main-menu.mm-root .mm-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(125% 100% at 50% 36%, transparent 38%, rgba(0, 0, 0, 0.74) 100%);
+}
+@keyframes mm-drift {
+  from { background-position: 0 0, 0 0, 0 0, 0 0; }
+  to   { background-position: 0 0, 0 256px, 0 0, 0 0; }
+}
+
+#main-menu.mm-root .mm-scene {
+  position: relative;
+  z-index: 1;
+  width: min(540px, calc(100vw - 28px));
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 30px 0 56px;
+}
+
+/* --- logo --- */
+#main-menu.mm-root .mm-logo {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  text-align: center;
+  margin: 6px 0 28px;
+}
+#main-menu.mm-root .mm-logo-glow {
+  position: absolute;
+  inset: -14% -18% 14% -18%;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(58% 58% at 50% 46%, rgba(86, 224, 140, 0.45), transparent 72%);
+  filter: blur(8px);
+  animation: mm-pulse 3.8s ease-in-out infinite;
+}
+#main-menu.mm-root .mm-logo-line {
+  position: relative;
+  z-index: 1;
+  font-size: 58px;
+  line-height: 0.92;
+  letter-spacing: 2px;
+  color: #f4d38a;
+  text-shadow:
+    0 0 16px rgba(86, 224, 140, 0.55),
+    0 0 36px rgba(86, 224, 140, 0.3),
+    3px 3px 0 #000;
+}
+#main-menu.mm-root .mm-logo-sub {
+  position: relative;
+  z-index: 1;
+  margin-top: 12px;
+  font-size: 16px;
+  letter-spacing: 4px;
+  color: #a4ecc4;
+  text-shadow: 0 0 10px rgba(86, 224, 140, 0.55), 1px 1px 0 #000;
+}
+@keyframes mm-pulse {
+  0%, 100% { opacity: 0.72; }
+  50% { opacity: 1; }
+}
+
+/* --- buttons --- */
+#main-menu.mm-root .mm-actions {
+  display: grid;
+  gap: 12px;
+  width: 100%;
+}
+#main-menu.mm-root .mm-button {
+  border: 10px solid transparent;
+  border-image: var(--spd-button-frame) 4 fill / 10px / 0 stretch;
+  padding: 12px 14px;
+  color: #f5ebd0;
+  background: transparent;
+  cursor: pointer;
+  font: 16px "SPD Pixel", "Trebuchet MS", "Segoe UI", sans-serif;
+  letter-spacing: 1px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+#main-menu.mm-root .mm-button:hover { filter: brightness(1.18); }
+#main-menu.mm-root .mm-button:active { transform: translateY(1px); }
+#main-menu.mm-root .mm-button-primary {
+  border-image-source: var(--spd-button-frame-grey);
+  color: #fff1b7;
+  font-size: 18px;
+  padding: 16px;
+}
+#main-menu.mm-root .mm-button-wide { width: 100%; }
+#main-menu.mm-root .mm-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+#main-menu.mm-root .mm-button-tile { width: 100%; }
+#main-menu.mm-root .mm-button-disabled {
+  opacity: 0.52;
+  cursor: default;
+  filter: grayscale(0.45);
+}
+#main-menu.mm-root .mm-button-disabled:hover { filter: grayscale(0.45); }
+#main-menu.mm-root .mm-button-disabled:active { transform: none; }
+#main-menu.mm-root .mm-tag {
+  font-size: 10px;
+  letter-spacing: 0;
+  padding: 1px 5px;
+  color: #14110a;
+  background: #cdb46a;
+}
+#main-menu.mm-root .mm-status {
+  margin: 8px 0 0;
+  text-align: center;
+  color: #9fb0a2;
+  font-size: 13px;
+}
+
+/* --- sub-windows (hero / history / about) --- */
+#main-menu.mm-root .mm-window {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 16px;
+  max-height: calc(100vh - 60px);
+  overflow: hidden;
+  border: 14px solid transparent;
+  border-image: var(--spd-window-frame) 6 fill / 14px / 0 round;
+  background: rgba(8, 11, 11, 0.62);
+  backdrop-filter: blur(2px);
+}
+#main-menu.mm-root .mm-window-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 14px;
+}
+#main-menu.mm-root .mm-window-heading h2 {
+  margin: 0 0 3px;
+  color: #f4d38a;
+  font-size: 22px;
+}
+#main-menu.mm-root .mm-window-heading p {
+  margin: 0;
+  color: #9fb0a2;
+  font-size: 12px;
+}
+#main-menu.mm-root .mm-back {
+  width: auto;
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+#main-menu.mm-root .mm-hero-list,
+#main-menu.mm-root .mm-history-list,
+#main-menu.mm-root .mm-about {
+  overflow-y: auto;
+}
+#main-menu.mm-root .mm-hero-list { display: grid; gap: 10px; }
+#main-menu.mm-root .mm-hero-card {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  text-align: left;
+  color: #f5ebd0;
+  background: transparent;
+  cursor: pointer;
+  border: 8px solid transparent;
+  border-image: var(--spd-button-frame-grey) 4 fill / 8px / 0 stretch;
+}
+#main-menu.mm-root .mm-hero-card:hover { filter: brightness(1.18); }
+#main-menu.mm-root .mm-hero-portrait {
+  width: 40px;
+  height: 44px;
+  border: 2px solid rgba(244, 211, 138, 0.36);
+  background: linear-gradient(180deg, rgba(42, 51, 48, 0.92), rgba(8, 10, 10, 0.92));
+}
+#main-menu.mm-root .mm-hero-copy { display: grid; gap: 4px; }
+#main-menu.mm-root .mm-hero-copy strong { color: #fff1b7; font-size: 16px; }
+#main-menu.mm-root .mm-hero-stats { color: #89c7b3; font-size: 12px; }
+#main-menu.mm-root .mm-hero-copy small { color: #a9b7aa; font-size: 12px; line-height: 1.35; }
+#main-menu.mm-root .mm-hero-go { color: #89c7b3; font-size: 16px; }
+
+#main-menu.mm-root .mm-history-list { display: grid; gap: 8px; }
+#main-menu.mm-root .mm-history-row {
+  display: grid;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 8px solid transparent;
+  border-image: var(--spd-button-frame) 4 fill / 8px / 0 stretch;
+}
+#main-menu.mm-root .mm-history-row strong { color: #fff1b7; font-size: 13px; }
+#main-menu.mm-root .mm-history-row span { color: #f0eadb; font-size: 12px; }
+#main-menu.mm-root .mm-history-row small { color: #a9b7aa; font-size: 11px; }
+
+#main-menu.mm-root .mm-empty {
+  padding: 20px;
+  text-align: center;
+  color: #a9b7aa;
+}
+#main-menu.mm-root .mm-about {
+  display: grid;
+  gap: 10px;
+  color: #d9dfd2;
+  font-size: 13px;
+  line-height: 1.45;
+}
+#main-menu.mm-root .mm-about em { color: #f4d38a; font-style: normal; }
+#main-menu.mm-root .mm-about-credit { color: #89c7b3; font-size: 12px; }
+
+#main-menu.mm-root .mm-footer {
+  position: fixed;
+  right: 12px;
+  bottom: 10px;
+  z-index: 2;
+  color: #6f7c70;
+  font-size: 11px;
+  pointer-events: none;
+}
+
+@media (max-width: 480px) {
+  #main-menu.mm-root .mm-scene { width: calc(100vw - 20px); padding-top: 22px; }
+  #main-menu.mm-root .mm-logo-line { font-size: 46px; }
+  #main-menu.mm-root .mm-logo-sub { font-size: 14px; letter-spacing: 3px; }
+  #main-menu.mm-root .mm-button-primary { font-size: 16px; padding: 14px; }
+}

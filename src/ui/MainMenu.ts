@@ -1,3 +1,4 @@
+import "./mainMenu.css";
 import type { HeroDef } from "@/core/data/types";
 import type { RunHistoryRecord } from "@/core/save/HistoryManager";
 
@@ -6,17 +7,29 @@ export interface MainMenuActions {
   continueGame(): void;
 }
 
-type MenuView = "title" | "heroes" | "history";
+type MenuView = "title" | "heroes" | "history" | "about";
 
+const VERSION_LABEL = "v0.1 · Codex Build";
+
+/**
+ * MainMenu — the title screen (DOM only; reads no live game state).
+ *
+ * A clean, Shattered-Pixel-Dungeon-style menu: a subtly animated dungeon
+ * backdrop, a glowing stacked logo, a primary "Enter the Dungeon" action and a
+ * grid of secondary commands. Sub-screens (hero select, run history, about)
+ * swap in over the same backdrop. It only invokes the injected actions; it
+ * never touches the engine (Pillar 1).
+ */
 export class MainMenu {
   private readonly root: HTMLDivElement;
   private readonly scene: HTMLDivElement;
-  private readonly titleView: HTMLDivElement;
-  private readonly classPanel: HTMLElement;
-  private readonly historyPanel: HTMLElement;
+  private readonly views = new Map<MenuView, HTMLElement>();
   private readonly heroes: readonly HeroDef[];
   private readonly history: readonly RunHistoryRecord[];
   private readonly actions: MainMenuActions;
+  private readonly canContinue: boolean;
+  private statusEl: HTMLParagraphElement | null = null;
+  private statusTimer = 0;
 
   constructor(
     canContinue: boolean,
@@ -24,222 +37,229 @@ export class MainMenu {
     history: readonly RunHistoryRecord[],
     actions: MainMenuActions,
   ) {
+    this.canContinue = canContinue;
     this.heroes = heroes;
     this.history = history;
     this.actions = actions;
 
     this.root = document.createElement("div");
     this.root.id = "main-menu";
+    // High-specificity hook so this menu's styles win over any leftover rules.
+    this.root.className = "mm-root";
     this.root.setAttribute("role", "application");
     this.root.setAttribute("aria-label", "Main menu");
+    // Decorative drifting dungeon backdrop (pure CSS, behind everything).
+    this.root.innerHTML = `<div class="mm-bg" aria-hidden="true"></div>`;
 
     this.scene = document.createElement("div");
-    this.scene.className = "main-menu-scene";
+    this.scene.className = "mm-scene";
 
-    this.titleView = this.buildTitleView(canContinue);
-    this.classPanel = this.buildClassPanel();
-    this.historyPanel = this.buildHistoryPanel();
+    this.views.set("title", this.buildTitleView());
+    this.views.set("heroes", this.buildHeroPanel());
+    this.views.set("history", this.buildHistoryPanel());
+    this.views.set("about", this.buildAboutPanel());
+    for (const view of this.views.values()) this.scene.append(view);
 
-    this.scene.append(this.titleView, this.classPanel, this.historyPanel);
-    this.root.append(this.scene, this.footer());
+    this.root.append(this.scene, this.buildFooter());
     document.body.append(this.root);
     this.show("title");
   }
 
   destroy(): void {
+    window.clearTimeout(this.statusTimer);
     this.root.remove();
   }
 
   private show(view: MenuView): void {
     this.root.dataset.view = view;
-    this.titleView.hidden = view !== "title";
-    this.classPanel.hidden = view !== "heroes";
-    this.historyPanel.hidden = view !== "history";
+    for (const [key, element] of this.views) element.hidden = key !== view;
   }
 
-  private buildTitleView(canContinue: boolean): HTMLDivElement {
+  // --- title ---------------------------------------------------------------
+  private buildTitleView(): HTMLDivElement {
     const view = document.createElement("div");
-    view.className = "main-title-view";
-
-    const header = document.createElement("header");
-    header.className = "main-title-header";
+    view.className = "mm-title-view";
 
     const logo = document.createElement("div");
-    logo.className = "main-logo";
-    logo.setAttribute("aria-label", "Pixel Dungeon");
+    logo.className = "mm-logo";
+    logo.setAttribute("aria-label", "Dungeon Pixel — Swords and Magic");
     logo.innerHTML = `
-      <span>PIXEL</span>
-      <span>DUNGEON</span>
+      <span class="mm-logo-glow" aria-hidden="true"></span>
+      <span class="mm-logo-line">DUNGEON</span>
+      <span class="mm-logo-line">PIXEL</span>
+      <span class="mm-logo-sub">Swords &amp; Magic</span>
     `;
 
-    const glow = document.createElement("div");
-    glow.className = "main-logo-glow";
+    const nav = document.createElement("nav");
+    nav.className = "mm-actions";
+    nav.setAttribute("aria-label", "Main actions");
 
-    const torches = document.createElement("div");
-    torches.className = "main-torches";
-    torches.innerHTML = `<i></i><i></i>`;
-
-    header.append(glow, logo, torches);
-
-    const menu = document.createElement("nav");
-    menu.className = "main-menu-buttons";
-    menu.setAttribute("aria-label", "Main actions");
-
-    if (canContinue) {
-      menu.append(this.menuButton("ENTER THE DUNGEON", "primary", () => this.actions.continueGame()));
-      menu.append(this.menuButton("NEW GAME", "secondary", () => this.show("heroes")));
+    if (this.canContinue) {
+      nav.append(this.button("Enter the Dungeon", "primary", () => this.actions.continueGame()));
+      nav.append(this.button("New Game", "wide", () => this.show("heroes")));
     } else {
-      menu.append(this.menuButton("ENTER THE DUNGEON", "primary", () => this.show("heroes")));
+      nav.append(this.button("Enter the Dungeon", "primary", () => this.show("heroes")));
     }
 
-    const paired = document.createElement("div");
-    paired.className = "main-menu-button-row";
-    paired.append(
-      this.menuButton("RANKINGS", "secondary", () => this.show("history")),
-      this.menuButton("HEROES", "secondary", () => this.show("heroes")),
+    const grid = document.createElement("div");
+    grid.className = "mm-grid";
+    grid.append(
+      this.button("Run History", "tile", () => this.show("history")),
+      this.button("About", "tile", () => this.show("about")),
     );
 
-    const lower = document.createElement("div");
-    lower.className = "main-menu-button-row";
-    lower.append(
-      this.menuButton("SETTINGS", "muted", () => this.flashUnavailable("Settings are not wired yet.")),
-      this.menuButton("ABOUT", "muted", () => this.flashUnavailable("Browser roguelike prototype.")),
+    const settings = this.button("Settings", "tile disabled", () =>
+      this.flash("Settings are coming in a later build."),
     );
+    settings.append(tag("soon"));
 
-    const status = document.createElement("p");
-    status.className = "main-menu-status";
-    status.textContent = canContinue ? "A living run is waiting." : "No living save found.";
+    this.statusEl = document.createElement("p");
+    this.statusEl.className = "mm-status";
+    this.statusEl.textContent = this.canContinue
+      ? "A living run is waiting below."
+      : "Choose a hero to begin your descent.";
 
-    menu.append(paired, lower, status);
-    view.append(header, menu);
+    nav.append(grid, settings, this.statusEl);
+    view.append(logo, nav);
     return view;
   }
 
-  private buildClassPanel(): HTMLElement {
-    const panel = this.windowPanel("Choose Your Hero", "Select a starting class.", () => this.show("title"));
+  // --- hero select ---------------------------------------------------------
+  private buildHeroPanel(): HTMLElement {
+    const panel = this.window("Choose Your Hero", "Each class begins the descent differently.");
 
     const list = document.createElement("div");
-    list.className = "hero-select-list";
-
+    list.className = "mm-hero-list";
     for (const hero of this.heroes) {
       const card = document.createElement("button");
       card.type = "button";
-      card.className = `hero-select-card hero-${cssIdent(hero.id)}`;
+      card.className = "mm-hero-card";
+      card.innerHTML = `
+        <span class="mm-hero-portrait" aria-hidden="true"></span>
+        <span class="mm-hero-copy">
+          <strong>${escapeText(hero.name)}</strong>
+          <span class="mm-hero-stats">HP ${hero.maxHealth} · STR ${hero.strength}</span>
+          <small>${escapeText(hero.description || `Starts with ${hero.startingItems.join(", ")}`)}</small>
+        </span>
+        <span class="mm-hero-go" aria-hidden="true">▶</span>
+      `;
       card.addEventListener("click", () => this.actions.newGame(hero.id));
-
-      const portrait = document.createElement("span");
-      portrait.className = "hero-select-portrait";
-      portrait.setAttribute("aria-hidden", "true");
-
-      const copy = document.createElement("span");
-      copy.className = "hero-select-copy";
-
-      const name = document.createElement("strong");
-      name.textContent = hero.name;
-
-      const stats = document.createElement("span");
-      stats.textContent = `HP ${hero.maxHealth}  STR ${hero.strength}`;
-
-      const detail = document.createElement("small");
-      detail.textContent = hero.description || `Starts with ${hero.startingItems.join(", ")}`;
-
-      copy.append(name, stats, detail);
-      card.append(portrait, copy);
       list.append(card);
     }
-
     panel.append(list);
     return panel;
   }
 
+  // --- run history ---------------------------------------------------------
   private buildHistoryPanel(): HTMLElement {
-    const panel = this.windowPanel("Rankings", "Fallen heroes are remembered here.", () => this.show("title"));
+    const panel = this.window("Run History", "Fallen heroes are remembered here.");
 
     if (this.history.length === 0) {
       const empty = document.createElement("p");
-      empty.className = "history-empty";
-      empty.textContent = "No fallen heroes yet.";
+      empty.className = "mm-empty";
+      empty.textContent = "No fallen heroes yet. Make your mark.";
       panel.append(empty);
       return panel;
     }
 
     const list = document.createElement("div");
-    list.className = "history-list";
+    list.className = "mm-history-list";
     this.history.forEach((run, index) => {
       const row = document.createElement("article");
-      row.className = "history-row";
-
-      const rank = document.createElement("strong");
-      rank.textContent = `#${index + 1} ${run.class}  L${run.heroLevel}`;
-
-      const cause = document.createElement("span");
-      cause.textContent = `Depth ${run.depthReached} - slain by ${run.killerName}`;
-
-      const inventory = document.createElement("small");
-      inventory.textContent = run.inventoryItemIds.length > 0
-        ? run.inventoryItemIds.join(", ")
-        : "empty pack";
-
-      row.append(rank, cause, inventory);
+      row.className = "mm-history-row";
+      const pack =
+        run.inventoryItemIds.length > 0 ? run.inventoryItemIds.join(", ") : "empty pack";
+      row.innerHTML = `
+        <strong>#${index + 1} · ${escapeText(run.class)} · L${run.heroLevel}</strong>
+        <span>Reached depth ${run.depthReached} — slain by ${escapeText(run.killerName)}</span>
+        <small>${escapeText(pack)}</small>
+      `;
       list.append(row);
     });
-
     panel.append(list);
     return panel;
   }
 
-  private windowPanel(titleText: string, subtitleText: string, onBack: () => void): HTMLElement {
+  // --- about ---------------------------------------------------------------
+  private buildAboutPanel(): HTMLElement {
+    const panel = this.window("About", VERSION_LABEL);
+    const body = document.createElement("div");
+    body.className = "mm-about";
+    body.innerHTML = `
+      <p>A web-native, turn-based roguelike — a clean TypeScript translation of
+      the open-source game <em>Shattered Pixel Dungeon</em>.</p>
+      <p>Deterministic, seed-driven dungeons. Everything in the browser, no
+      install required.</p>
+      <p class="mm-about-credit">Built with Vite + TypeScript · rendered on HTML5 Canvas.</p>
+    `;
+    panel.append(body);
+    return panel;
+  }
+
+  // --- shared building blocks ---------------------------------------------
+  private window(titleText: string, subtitleText: string): HTMLElement {
     const panel = document.createElement("section");
-    panel.className = "main-subwindow";
+    panel.className = "mm-window";
 
     const header = document.createElement("header");
-    header.className = "main-subwindow-header";
+    header.className = "mm-window-header";
 
-    const title = document.createElement("div");
-    const heading = document.createElement("h2");
-    heading.textContent = titleText;
-    const subtitle = document.createElement("p");
-    subtitle.textContent = subtitleText;
-    title.append(heading, subtitle);
+    const heading = document.createElement("div");
+    heading.className = "mm-window-heading";
+    heading.innerHTML = `<h2>${escapeText(titleText)}</h2><p>${escapeText(subtitleText)}</p>`;
 
-    const back = this.menuButton("BACK", "secondary", onBack);
-    back.classList.add("main-back-button");
+    const back = this.button("Back", "tile", () => this.show("title"));
+    back.classList.add("mm-back");
 
-    header.append(title, back);
+    header.append(heading, back);
     panel.append(header);
     return panel;
   }
 
-  private menuButton(
+  private button(
     label: string,
-    tone: "primary" | "secondary" | "muted",
+    tone: string,
     onClick: () => void,
   ): HTMLButtonElement {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = `menu-button menu-button-${tone}`;
-    button.textContent = label;
+    button.className = `mm-button mm-button-${tone.replace(/\s+/g, " mm-button-")}`;
+    button.append(document.createTextNode(label));
     button.addEventListener("click", onClick);
     return button;
   }
 
-  private footer(): HTMLDivElement {
+  private buildFooter(): HTMLDivElement {
     const footer = document.createElement("div");
-    footer.className = "main-menu-footer";
-    footer.innerHTML = `<span>v0.1</span><span>Codex Build</span>`;
+    footer.className = "mm-footer";
+    footer.textContent = VERSION_LABEL;
     return footer;
   }
 
-  private flashUnavailable(message: string): void {
-    const status = this.titleView.querySelector<HTMLParagraphElement>(".main-menu-status");
-    if (!status) return;
+  private flash(message: string): void {
+    if (!this.statusEl) return;
+    const status = this.statusEl;
     status.textContent = message;
-    window.setTimeout(() => {
-      if (status.isConnected) status.textContent = "Select a command.";
-    }, 1400);
+    window.clearTimeout(this.statusTimer);
+    this.statusTimer = window.setTimeout(() => {
+      if (status.isConnected) {
+        status.textContent = this.canContinue
+          ? "A living run is waiting below."
+          : "Choose a hero to begin your descent.";
+      }
+    }, 1600);
   }
 }
 
-function cssIdent(value: string): string {
-  return value.replace(/[^a-z0-9_-]/gi, "").toLowerCase();
+function tag(text: string): HTMLSpanElement {
+  const span = document.createElement("span");
+  span.className = "mm-tag";
+  span.textContent = text;
+  return span;
+}
+
+function escapeText(text: string): string {
+  const span = document.createElement("span");
+  span.textContent = text;
+  return span.innerHTML;
 }

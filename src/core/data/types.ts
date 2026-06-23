@@ -7,6 +7,12 @@
  * the values completely.
  */
 
+export interface EnemyDeathCauses {
+  normal?: string[];
+  crit?: string[];
+  skills?: Record<string, string[]>;
+}
+
 export interface EnemyDef {
   id: string;
   name: string;
@@ -35,6 +41,8 @@ export interface EnemyDef {
   /** Last hero level that can earn EXP from this enemy. Always >= 0. */
   maxLevelCap: number;
   description: string;
+  /** Optional custom cause of death templates */
+  deathCauses?: EnemyDeathCauses;
 }
 
 export interface ItemDef {

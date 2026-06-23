@@ -238,6 +238,7 @@ async function boot(): Promise<void> {
         armorName: current.inventory.equippedIn("armor")?.name ?? "Unarmored",
         sprite: heroSpriteKey(current.heroSprite),
         alive: current.heroAlive,
+        causeOfDeath: current.deathReason,
       },
       inventory: {
         capacity: current.inventory.capacity,
@@ -319,6 +320,10 @@ async function boot(): Promise<void> {
           bus.emit("ui:look", {});
         },
         restart: restartRun,
+        mainMenu: () => {
+          playSfx("ui_click");
+          showMainMenu();
+        },
       },
       assets,
     );

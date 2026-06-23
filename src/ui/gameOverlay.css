@@ -1,0 +1,90 @@
+/*
+ * Game Over ("dying") screen — SPD-style modal over the frozen dungeon.
+ * Scoped with #ui-overlay so it overrides any leftover .game-over-* rules.
+ * Uses the shared SPD chrome CSS variables defined in style.css :root.
+ */
+
+#ui-overlay .game-over-modal {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  pointer-events: auto;
+  /* Dim, blood-tinted veil — the dungeon stays visible behind it. */
+  background:
+    radial-gradient(120% 90% at 50% 42%, rgba(74, 18, 16, 0.3), transparent 56%),
+    rgba(4, 5, 6, 0.56);
+  animation: go-fade 0.35s ease-out both;
+}
+#ui-overlay .game-over-modal[hidden] {
+  display: none;
+}
+@keyframes go-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.go-frame {
+  width: min(380px, calc(100vw - 36px));
+  display: grid;
+  gap: 14px;
+  justify-items: center;
+  text-align: center;
+  padding: 24px 22px;
+  box-sizing: border-box;
+  border: 14px solid transparent;
+  border-image: var(--spd-window-frame) 6 fill / 14px / 0 round;
+  background: rgba(10, 9, 9, 0.86);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6);
+  animation: go-rise 0.35s ease-out both;
+}
+@keyframes go-rise {
+  from { opacity: 0; transform: translateY(14px) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+
+.go-banner {
+  font: 34px "SPD Pixel", "Trebuchet MS", "Segoe UI", sans-serif;
+  letter-spacing: 2px;
+  line-height: 1;
+  color: #e2705c;
+  text-shadow:
+    0 0 16px rgba(226, 90, 74, 0.5),
+    2px 2px 0 #000;
+}
+
+.go-cause {
+  margin: 0;
+  color: #ffffff;
+  font-size: 13px;
+  font-style: italic;
+  line-height: 1.35;
+  text-align: center;
+}
+
+
+
+.go-buttons {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  margin-top: 4px;
+}
+.go-button {
+  border: 9px solid transparent;
+  border-image: var(--spd-button-frame-grey) 3 fill / 9px / 0 stretch;
+  padding: 12px;
+  color: #f5ebd0;
+  background: transparent;
+  cursor: pointer;
+  font: 16px "SPD Pixel", "Trebuchet MS", "Segoe UI", sans-serif;
+  letter-spacing: 1px;
+}
+.go-button:hover { filter: brightness(1.18); }
+.go-button:active { transform: translateY(1px); }
+.go-button-primary {
+  color: #fff1b7;
+  border-image-source: var(--spd-button-frame-red);
+}

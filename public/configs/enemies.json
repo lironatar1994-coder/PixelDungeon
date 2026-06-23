@@ -14,7 +14,16 @@
     "minDepth": 1,
     "expReward": 2,
     "maxLevelCap": 5,
-    "description": "A quick, fragile scavenger. Fast and evasive but hits softly."
+    "description": "A quick, fragile scavenger. Fast and evasive but hits softly.",
+    "deathCauses": {
+      "normal": [
+        "bitten to death by a {name}",
+        "gnawed to the bone by a {name}"
+      ],
+      "crit": [
+        "throat ripped out by a {name}"
+      ]
+    }
   },
   {
     "id": "zombie",
@@ -31,7 +40,13 @@
     "minDepth": 1,
     "expReward": 5,
     "maxLevelCap": 10,
-    "description": "A slow, relentless husk. Easy to dodge but armored and hits hard."
+    "description": "A slow, relentless husk. Easy to dodge but armored and hits hard.",
+    "deathCauses": {
+      "normal": [
+        "beaten to a pulp by a {name}",
+        "torn apart by a {name}"
+      ]
+    }
   },
   {
     "id": "gnoll",
@@ -48,6 +63,12 @@
     "minDepth": 2,
     "expReward": 2,
     "maxLevelCap": 8,
-    "description": "A balanced hunter with keen eyes; appears deeper in the dungeon."
+    "description": "A balanced hunter with keen eyes; appears deeper in the dungeon.",
+    "deathCauses": {
+      "normal": [
+        "stabbed by a {name}",
+        "ambushed and slain by a {name}"
+      ]
+    }
   }
 ]

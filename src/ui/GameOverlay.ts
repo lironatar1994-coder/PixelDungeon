@@ -1,3 +1,4 @@
+import "./gameOverlay.css";
 import type { EventBus } from "@/events/EventBus";
 import type { ItemDef } from "@/core/data/types";
 import type { SpriteKey, SpriteSheetAssets } from "@/render/AssetLoader";
@@ -24,6 +25,7 @@ export interface OverlayState {
     armorName: string;
     sprite: SpriteKey;
     alive: boolean;
+    causeOfDeath?: string;
   };
   inventory: {
     capacity: number;
@@ -43,6 +45,7 @@ export interface OverlayActions {
   quickslot(): void;
   look(): void;
   restart(): void;
+  mainMenu(): void;
 }
 
 export class GameOverlay {
@@ -560,22 +563,37 @@ export class GameOverlay {
     this.gameOverPanel.replaceChildren();
 
     const frame = document.createElement("div");
-    frame.className = "game-over-frame";
+    frame.className = "go-frame";
 
-    const title = document.createElement("h2");
-    title.textContent = "Game Over";
+    const banner = document.createElement("div");
+    banner.className = "go-banner";
+    banner.textContent = "Game Over";
+    frame.append(banner);
 
-    const meta = document.createElement("p");
-    meta.textContent = `Depth reached: ${state.depth}`;
+    if (state.hero.causeOfDeath) {
+      const cause = document.createElement("p");
+      cause.className = "go-cause";
+      cause.textContent = state.hero.causeOfDeath;
+      frame.append(cause);
+    }
 
-    const restart = document.createElement("button");
-    restart.type = "button";
-    restart.className = "restart-button";
-    restart.textContent = "Restart Run";
-    restart.addEventListener("click", () => this.restartRun());
+    const buttons = document.createElement("div");
+    buttons.className = "go-buttons";
+    const newGame = this.goButton("New Game", "go-button-primary", () => this.restartRun());
+    const menu = this.goButton("Main Menu", "go-button", () => this.actions.mainMenu());
+    buttons.append(newGame, menu);
 
-    frame.append(title, meta, restart);
+    frame.append(buttons);
     this.gameOverPanel.append(frame);
+  }
+
+  private goButton(label: string, tone: string, onClick: () => void): HTMLButtonElement {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `go-button ${tone}`;
+    button.textContent = label;
+    button.addEventListener("click", onClick);
+    return button;
   }
 
   private closeModals(): void {
@@ -725,3 +743,5 @@ function itemDescription(item: ItemDef): string {
 function portraitForHero(sprite: SpriteKey): SpriteKey {
   return sprite === "mageHero" ? "magePortrait" : "heroPortrait";
 }
+
+
