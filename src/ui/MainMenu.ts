@@ -220,11 +220,21 @@ export class MainMenu {
     label: string,
     tone: string,
     onClick: () => void,
+    iconHtml?: string
   ): HTMLButtonElement {
     const button = document.createElement("button");
     button.type = "button";
     button.className = `mm-button mm-button-${tone.replace(/\s+/g, " mm-button-")}`;
-    button.append(document.createTextNode(label));
+    
+    const iconDiv = document.createElement("div");
+    iconDiv.className = "mm-button-icon";
+    if (iconHtml) iconDiv.innerHTML = iconHtml;
+
+    const labelDiv = document.createElement("div");
+    labelDiv.className = "mm-button-label";
+    labelDiv.textContent = label;
+
+    button.append(iconDiv, labelDiv);
     button.addEventListener("click", onClick);
     return button;
   }

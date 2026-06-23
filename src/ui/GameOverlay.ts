@@ -555,6 +555,10 @@ export class GameOverlay {
       return;
     }
 
+    if (!this.gameOverPanel.hidden) {
+      return; // Already rendered!
+    }
+
     this.inventoryOpen = false;
     this.quickslotOpen = false;
     this.inventoryPanel.hidden = true;

@@ -128,7 +128,7 @@
 #main-menu.mm-root .mm-button {
   border: 10px solid transparent;
   border-image: var(--spd-button-frame) 4 fill / 10px / 0 stretch;
-  padding: 12px 14px;
+  padding: 8px 12px;
   color: #f5ebd0;
   background: transparent;
   cursor: pointer;
@@ -136,8 +136,23 @@
   letter-spacing: 1px;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
+  justify-content: flex-start;
+  position: relative;
+}
+#main-menu.mm-root .mm-button-icon {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  background: #111411;
+  border: 2px solid #000;
+  border-bottom-color: #3b423c;
+  border-right-color: #3b423c;
+  box-sizing: border-box;
+}
+#main-menu.mm-root .mm-button-label {
+  flex-grow: 1;
+  text-align: center;
+  margin-right: 28px;
 }
 #main-menu.mm-root .mm-button:hover { filter: brightness(1.18); }
 #main-menu.mm-root .mm-button:active { transform: translateY(1px); }
