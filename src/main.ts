@@ -19,6 +19,7 @@ import { Renderer } from "@/render/Renderer";
 import {
   clearCombatAnimations,
   drawMapScene,
+  queueActorMoveAnimation,
   queueCombatStrikeAnimation,
   type MapView,
 } from "@/render/MapScene";
@@ -31,6 +32,7 @@ import {
 } from "@/render/viewport";
 import {
   GameWorld,
+  type ActorMoveInfo,
   type CombatStrikeInfo,
   type HeroDamagedInfo,
 } from "@/core/game/GameWorld";
@@ -89,6 +91,7 @@ async function boot(): Promise<void> {
   const autoSave = (changedWorld: GameWorld) => saveManager.save(changedWorld);
   const emitHeroDamaged = (info: HeroDamagedInfo) => bus.emit("hero:damaged", info);
   const emitCombatStrike = (info: CombatStrikeInfo) => bus.emit("combat:strike", info);
+  const emitActorMove = (info: ActorMoveInfo) => bus.emit("actor:move", info);
   // One shared callback set so every GameWorld (new / loaded / restarted) is
   // wired to the same EventBus bridges.
   const worldCallbacks = {
@@ -96,6 +99,7 @@ async function boot(): Promise<void> {
     onLog: publishLog,
     onHeroDamaged: emitHeroDamaged,
     onCombatStrike: emitCombatStrike,
+    onActorMove: emitActorMove,
   };
 
   let appState: AppState = "MainMenu";
@@ -650,6 +654,10 @@ async function boot(): Promise<void> {
 
   bus.on("combat:strike", (event) => {
     queueCombatStrikeAnimation(event);
+  });
+
+  bus.on("actor:move", (event) => {
+    queueActorMoveAnimation(event);
   });
 
   bus.on("loop:frame", ({ dt }) => {

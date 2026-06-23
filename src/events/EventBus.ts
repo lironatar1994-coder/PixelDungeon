@@ -41,6 +41,8 @@ export interface GameEvents {
     hit: boolean;
     damage: number;
   };
+  /** An actor's core grid cell changed instantly; render may animate it. */
+  "actor:move": { actorId: string; fromCell: number; toCell: number };
   /** The hero just lost hit points (e.g. a monster landed a blow). */
   "hero:damaged": { amount: number; source: string; hp: number };
   /** UI command shell for future quickslot assignment/use behavior. */

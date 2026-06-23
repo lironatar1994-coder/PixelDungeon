@@ -817,3 +817,20 @@ Added focused headless coverage in **`GameWorld.test`**
 open-on-entry, close-on-leave, and explicit close. Verified with `tsc --noEmit`,
 `git diff --check`, and a production build via `vite build --configLoader
 runner`.
+
+### Phase 17.3 - Movement Tweens & Walk Cycles COMPLETE
+Added render-only movement animation while preserving instantaneous core grid
+updates. **`TurnQueue`** ([src/core/turn/TurnQueue.ts](src/core/turn/TurnQueue.ts))
+now supports a passive step observer, and **`GameWorld`**
+([src/core/game/GameWorld.ts](src/core/game/GameWorld.ts)) uses it to emit an
+`actor:move` callback only when a Hero or Enemy cell actually changes; **`main.ts`**
+([src/main.ts](src/main.ts)) bridges that into the typed EventBus.
+
+**`MapScene`** ([src/render/MapScene.ts](src/render/MapScene.ts)) listens for
+`actor:move`, interpolates the actor visually from `fromCell` to `toCell` over
+150ms using render-time state, and keeps the actor's real cell, FOV, combat,
+and turn math untouched. During the slide it uses SPD's original frame data:
+Hero/Mage run frames `2..7` at 20 fps from `HeroSprite.java`, Rat frames
+`6..10` at 10 fps from `RatSprite.java`, and Zombie/Undead frames `4..9` at
+15 fps from `UndeadSprite.java`; after the tween expires actors return to the
+existing idle animation layer.

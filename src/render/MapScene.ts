@@ -37,8 +37,10 @@ const COLORS = {
 
 const IDLE_START_DELAY_SECONDS = 1.4;
 const STRIKE_DURATION_SECONDS = 0.15;
+const MOVE_TWEEN_DURATION_MS = 150;
 const DAMAGE_POPUP_DURATION_SECONDS = 0.7;
 const HERO_DRAW_SCALE = 0.78;
+const WALL_CAST_SHADOW_ALPHA = 0.24;
 const TILE_SHEET_COLUMNS = 16;
 const RAISED_DOORS = sheetIndex(1, 8);
 const RAISED_DOOR = RAISED_DOORS;
@@ -65,8 +67,18 @@ export interface CombatStrikeAnimationEvent {
   damage: number;
 }
 
+export interface ActorMoveAnimationEvent {
+  actorId: string;
+  fromCell: number;
+  toCell: number;
+}
+
 interface CombatStrikeAnimation extends CombatStrikeAnimationEvent {
   startedAt: number | null;
+}
+
+interface ActorMoveAnimation extends ActorMoveAnimationEvent {
+  startedAtMs: number;
 }
 
 interface DamagePopup {
@@ -77,6 +89,7 @@ interface DamagePopup {
 }
 
 const activeStrikes: CombatStrikeAnimation[] = [];
+const activeMoves = new Map<string, ActorMoveAnimation>();
 const activeDamagePopups: DamagePopup[] = [];
 
 export function queueCombatStrikeAnimation(event: CombatStrikeAnimationEvent): void {
@@ -89,8 +102,17 @@ export function queueCombatStrikeAnimation(event: CombatStrikeAnimationEvent): v
   });
 }
 
+export function queueActorMoveAnimation(event: ActorMoveAnimationEvent): void {
+  if (event.fromCell === event.toCell) return;
+  activeMoves.set(event.actorId, {
+    ...event,
+    startedAtMs: nowMs(),
+  });
+}
+
 export function clearCombatAnimations(): void {
   activeStrikes.length = 0;
+  activeMoves.clear();
   activeDamagePopups.length = 0;
 }
 
@@ -236,6 +258,10 @@ export function drawMapScene(
           drawTileIndex(ctx, assets, overhangIndex, drawX, drawY, ts, 1, view.depth);
         }
 
+        if (isWalkableTerrain(terrain) && terrainAt(grid, x, y - 1) === Terrain.WALL) {
+          drawWallCastShadow(ctx, drawX, drawY, ts);
+        }
+
         if (!visible) {
           ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
           ctx.fillRect(drawX, drawY, ts, ts);
@@ -356,6 +382,26 @@ function isWallStitchable(grid: Grid, x: number, y: number): boolean {
   return terrain === Terrain.WALL;
 }
 
+function isWalkableTerrain(terrain: Terrain): boolean {
+  return terrain === Terrain.FLOOR || terrain === Terrain.DOOR;
+}
+
+function drawWallCastShadow(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  tileSize: number,
+): void {
+  const shadowHeight = Math.max(2, Math.round(tileSize * 0.13));
+  const gradient = ctx.createLinearGradient(x, y, x, y + shadowHeight);
+  gradient.addColorStop(0, `rgba(0, 0, 0, ${WALL_CAST_SHADOW_ALPHA})`);
+  gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
+  ctx.save();
+  ctx.fillStyle = gradient;
+  ctx.fillRect(x, y, tileSize, shadowHeight);
+  ctx.restore();
+}
+
 function stitchRaisedWallTile(baseTile: number, grid: Grid, x: number, y: number): number {
   let result = baseTile;
   if (!isWallStitchable(grid, x + 1, y)) result += 1;
@@ -456,18 +502,74 @@ function drawCell(
   visualScale = 1,
 ): void {
   const ts = vp.tileSize;
-  const strike = motion?.actorId
+  const isActor = motion?.actorId !== undefined;
+  const visual = motion?.actorId
     ? visualOffsetForActor(motion.actorId, grid, ts, motion.frameElapsed)
-    : { pixelOffsetX: 0, pixelOffsetY: 0 };
-  const size = ts * visualScale;
-  const x = vp.offsetX + grid.xOf(cell) * ts + strike.pixelOffsetX + (ts - size) / 2;
-  const y = vp.offsetY + grid.yOf(cell) * ts + strike.pixelOffsetY + (ts - size);
-  if (assets && drawSprite(ctx, assets, sprite, x, y, size, 1, motion, depth)) {
+    : { pixelOffsetX: 0, pixelOffsetY: 0, movingElapsed: null };
+  const pixelX = vp.offsetX + grid.xOf(cell) * ts + visual.pixelOffsetX;
+  const pixelY = vp.offsetY + grid.yOf(cell) * ts + visual.pixelOffsetY;
+  const size = actorSpriteSize(assets, sprite, ts, visualScale, depth);
+  const x = pixelX + (ts - size.width) / 2;
+  const y = pixelY + ts - size.height;
+  const drawMotion = motion && visual.movingElapsed !== null
+    ? { ...motion, movingElapsed: visual.movingElapsed }
+    : motion;
+
+  if (isActor) {
+    drawActorShadow(ctx, pixelX, pixelY, ts, visualScale);
+  }
+
+  if (assets && drawSprite(ctx, assets, sprite, x, y, size.width, 1, drawMotion, depth, size.height)) {
     return;
   }
 
-  if (edge) drawDisc(ctx, x + size / 2, y + size / 2, size, fill, edge);
-  else drawSquare(ctx, x, y, size, fill);
+  const fallbackSize = Math.min(size.width, size.height);
+  if (edge) drawDisc(ctx, x + size.width / 2, y + size.height / 2, fallbackSize, fill, edge);
+  else drawSquare(ctx, x, y, fallbackSize, fill);
+}
+
+function actorSpriteSize(
+  assets: SpriteSheetAssets | undefined,
+  sprite: SpriteKey,
+  tileSize: number,
+  visualScale: number,
+  depth: number,
+): { width: number; height: number } {
+  let height = tileSize * visualScale;
+  let width = height;
+  if (assets) {
+    const source = assets.sourceRect(sprite, depth);
+    width = height * (source.w / source.h);
+    if (width > tileSize) {
+      const fit = tileSize / width;
+      width *= fit;
+      height *= fit;
+    }
+  }
+  return { width, height };
+}
+
+function drawActorShadow(
+  ctx: CanvasRenderingContext2D,
+  pixelX: number,
+  pixelY: number,
+  tileSize: number,
+  visualScale: number,
+): void {
+  ctx.save();
+  ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
+  ctx.beginPath();
+  ctx.ellipse(
+    pixelX + tileSize / 2,
+    pixelY + tileSize - Math.max(1, Math.round(tileSize * 0.04)),
+    Math.max(3, tileSize * 0.22 * visualScale),
+    Math.max(2, tileSize * 0.08 * visualScale),
+    0,
+    0,
+    Math.PI * 2,
+  );
+  ctx.fill();
+  ctx.restore();
 }
 
 function drawEnemyHealthBar(
@@ -511,12 +613,13 @@ function drawSprite(
   alpha: number,
   idle?: IdleState,
   depth = 1,
+  height = size,
 ): boolean {
   const image = assets.imageFor(sprite, depth);
   if (!image) return false;
   const base = assets.sourceRect(sprite, depth);
-  const motion = idleMotion(sprite, idle);
-  const src = motion.useFrameOne ? { ...base, x: base.x + base.w } : base;
+  const motion = spriteMotion(sprite, idle);
+  const src = { ...base, x: base.x + base.w * motion.frameOffset };
   const dx = x + motion.dx * Math.max(1, size / 48);
   const dy = y + motion.dy * Math.max(1, size / 48);
   ctx.save();
@@ -531,7 +634,7 @@ function drawSprite(
     dx,
     dy,
     size + motion.dw,
-    size + motion.dh,
+    height + motion.dh,
   );
   ctx.restore();
   return true;
@@ -545,22 +648,30 @@ interface IdleState {
 interface ActorDrawMotion extends IdleState {
   actorId?: string;
   frameElapsed: number;
+  movingElapsed?: number;
 }
 
 function isIdleAnimated(sprite: SpriteKey): boolean {
   return sprite === "hero" || sprite === "mageHero" || sprite === "rat" || sprite === "zombie";
 }
 
-interface IdleMotion {
-  useFrameOne: boolean;
+interface SpriteMotion {
+  frameOffset: number;
   dx: number;
   dy: number;
   dw: number;
   dh: number;
 }
 
-function idleMotion(sprite: SpriteKey, idle?: IdleState): IdleMotion {
-  const still: IdleMotion = { useFrameOne: false, dx: 0, dy: 0, dw: 0, dh: 0 };
+function spriteMotion(sprite: SpriteKey, idle?: IdleState): SpriteMotion {
+  if (idle && "movingElapsed" in idle && typeof idle.movingElapsed === "number") {
+    return runMotion(sprite, idle.movingElapsed);
+  }
+  return idleMotion(sprite, idle);
+}
+
+function idleMotion(sprite: SpriteKey, idle?: IdleState): SpriteMotion {
+  const still: SpriteMotion = { frameOffset: 0, dx: 0, dy: 0, dw: 0, dh: 0 };
   if (!idle || idle.elapsed <= 0 || !isIdleAnimated(sprite)) return still;
 
   const h = visualHash(`${sprite}:${idle.key}`);
@@ -570,21 +681,44 @@ function idleMotion(sprite: SpriteKey, idle?: IdleState): IdleMotion {
   const pulse = phase / cycle;
 
   if (pulse < 0.08) {
-    return { useFrameOne: false, dx: 0, dy: -1, dw: 0, dh: 1 };
+    return { frameOffset: 0, dx: 0, dy: -1, dw: 0, dh: 1 };
   }
 
   if (pulse >= 0.42 && pulse < 0.5) {
-    return { useFrameOne: false, dx: 0, dy: 1, dw: 0, dh: -1 };
+    return { frameOffset: 0, dx: 0, dy: 1, dw: 0, dh: -1 };
   }
 
   if (pulse >= 0.72 && pulse < 0.82) {
     const useFrameOne = ((h >>> 16) + Math.floor((idle.elapsed + offset) / cycle)) % 3 === 0;
     return useFrameOne
-      ? { useFrameOne: true, dx: 0, dy: 0, dw: 0, dh: 0 }
-      : { useFrameOne: false, dx: sprite === "rat" ? 1 : 0, dy: 0, dw: 0, dh: 0 };
+      ? { frameOffset: 1, dx: 0, dy: 0, dw: 0, dh: 0 }
+      : { frameOffset: 0, dx: sprite === "rat" ? 1 : 0, dy: 0, dw: 0, dh: 0 };
   }
 
   return still;
+}
+
+function runMotion(sprite: SpriteKey, movingElapsed: number): SpriteMotion {
+  const run = runAnimation(sprite);
+  if (!run) return { frameOffset: 0, dx: 0, dy: 0, dw: 0, dh: 0 };
+  const frame = run.frames[Math.floor(Math.max(0, movingElapsed) * run.fps) % run.frames.length]!;
+  return { frameOffset: frame, dx: 0, dy: 0, dw: 0, dh: 0 };
+}
+
+function runAnimation(sprite: SpriteKey): { frames: number[]; fps: number } | null {
+  if (sprite === "hero" || sprite === "mageHero") {
+    // HeroSprite.java: RUN_FRAMERATE=20, run.frames(film, 2,3,4,5,6,7).
+    return { frames: [2, 3, 4, 5, 6, 7], fps: 20 };
+  }
+  if (sprite === "rat") {
+    // RatSprite.java: run = 10 fps; frames 6..10.
+    return { frames: [6, 7, 8, 9, 10], fps: 10 };
+  }
+  if (sprite === "zombie") {
+    // UndeadSprite.java: run = 15 fps; frames 4..9.
+    return { frames: [4, 5, 6, 7, 8, 9], fps: 15 };
+  }
+  return null;
 }
 
 function idleElapsedAfterStillness(elapsed: number, view: MapView): number {
@@ -628,9 +762,28 @@ function visualOffsetForActor(
   grid: Grid,
   tileSize: number,
   elapsed: number,
-): { pixelOffsetX: number; pixelOffsetY: number } {
+): { pixelOffsetX: number; pixelOffsetY: number; movingElapsed: number | null } {
   let pixelOffsetX = 0;
   let pixelOffsetY = 0;
+  let movingElapsed: number | null = null;
+  const move = activeMoves.get(actorId);
+  if (move) {
+    const elapsedMs = nowMs() - move.startedAtMs;
+    const progress = Math.max(0, Math.min(1, elapsedMs / MOVE_TWEEN_DURATION_MS));
+    if (progress >= 1) {
+      activeMoves.delete(actorId);
+    } else {
+      const fromX = grid.xOf(move.fromCell);
+      const fromY = grid.yOf(move.fromCell);
+      const toX = grid.xOf(move.toCell);
+      const toY = grid.yOf(move.toCell);
+      const visualX = fromX + (toX - fromX) * progress;
+      const visualY = fromY + (toY - fromY) * progress;
+      pixelOffsetX += (visualX - toX) * tileSize;
+      pixelOffsetY += (visualY - toY) * tileSize;
+      movingElapsed = elapsedMs / 1000;
+    }
+  }
   for (const strike of activeStrikes) {
     if (strike.attackerId !== actorId || strike.startedAt === null) continue;
     const progress = Math.max(
@@ -647,7 +800,11 @@ function visualOffsetForActor(
     pixelOffsetX += (dx / len) * reach;
     pixelOffsetY += (dy / len) * reach;
   }
-  return { pixelOffsetX, pixelOffsetY };
+  return { pixelOffsetX, pixelOffsetY, movingElapsed };
+}
+
+function nowMs(): number {
+  return globalThis.performance?.now?.() ?? Date.now();
 }
 
 function easeOutCubic(t: number): number {

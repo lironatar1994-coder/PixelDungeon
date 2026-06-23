@@ -53,6 +53,12 @@ export interface CombatStrikeInfo {
   damage: number;
 }
 
+export interface ActorMoveInfo {
+  actorId: string;
+  fromCell: number;
+  toCell: number;
+}
+
 export interface WorldOptions {
   /** How far the hero can see (the player's fog radius — not enemy content). */
   visionRadius?: number;
@@ -67,6 +73,8 @@ export interface WorldOptions {
   onHeroDamaged?: (info: HeroDamagedInfo) => void;
   /** Fired after an attack roll resolves; render/UI bridge it to EventBus. */
   onCombatStrike?: (info: CombatStrikeInfo) => void;
+  /** Fired after an actor's core grid position changes; render may tween it. */
+  onActorMove?: (info: ActorMoveInfo) => void;
 }
 
 export interface EnemySnapshot {
@@ -130,6 +138,7 @@ export class GameWorld {
   private readonly onLog?: (line: string) => void;
   private readonly onHeroDamaged?: (info: HeroDamagedInfo) => void;
   private readonly onCombatStrike?: (info: CombatStrikeInfo) => void;
+  private readonly onActorMove?: (info: ActorMoveInfo) => void;
   private enemyAiRng = new RNG(0);
 
   private queue = new TurnQueue();
@@ -150,6 +159,7 @@ export class GameWorld {
     this.onLog = opts.onLog;
     this.onHeroDamaged = opts.onHeroDamaged;
     this.onCombatStrike = opts.onCombatStrike;
+    this.onActorMove = opts.onActorMove;
 
     this.createHero(); // the hero persists across floors
     this.enterFloor();
@@ -158,7 +168,7 @@ export class GameWorld {
   static fromSnapshot(
     snapshot: GameWorldSnapshot,
     content: ContentDatabaseType,
-    opts: Pick<WorldOptions, "onChange" | "onLog" | "onHeroDamaged" | "onCombatStrike"> = {},
+    opts: Pick<WorldOptions, "onChange" | "onLog" | "onHeroDamaged" | "onCombatStrike" | "onActorMove"> = {},
   ): GameWorld {
     const world = new GameWorld(snapshot.seed, content, {
       visionRadius: snapshot.visionRadius,
@@ -168,6 +178,7 @@ export class GameWorld {
       onLog: opts.onLog,
       onHeroDamaged: opts.onHeroDamaged,
       onCombatStrike: opts.onCombatStrike,
+      onActorMove: opts.onActorMove,
     });
     world.restore(snapshot);
     return world;
@@ -583,11 +594,39 @@ export class GameWorld {
   }
 
   private processTurns(): void {
-    this.queue.run();
+    const cellsBeforeAct = new Map<Hero | Enemy, number>();
+    this.queue.run(100_000, {
+      beforeAct: (actor) => {
+        const cell = this.actorCell(actor);
+        if (cell !== null) cellsBeforeAct.set(actor as Hero | Enemy, cell);
+      },
+      afterAct: (actor) => {
+        const fromCell = cellsBeforeAct.get(actor as Hero | Enemy);
+        cellsBeforeAct.delete(actor as Hero | Enemy);
+        if (fromCell === undefined) return;
+        const toCell = this.actorCell(actor);
+        const actorId = this.actorId(actor);
+        if (toCell !== null && actorId !== null && toCell !== fromCell) {
+          this.onActorMove?.({ actorId, fromCell, toCell });
+        }
+      },
+    });
     this.queue.fixTime();
     this.checkOpenDoors();
     this.recomputeFOV();
     this.emitChange();
+  }
+
+  private actorCell(actor: unknown): number | null {
+    if (actor === this.hero) return this.hero.pos;
+    if (actor instanceof Enemy && this.enemyList.includes(actor)) return actor.pos;
+    return null;
+  }
+
+  private actorId(actor: unknown): string | null {
+    if (actor === this.hero) return "hero";
+    if (actor instanceof Enemy && this.enemyList.includes(actor)) return this.enemyId(actor);
+    return null;
   }
 
   private checkOpenDoors(): void {

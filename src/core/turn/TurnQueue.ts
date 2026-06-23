@@ -21,6 +21,11 @@ export interface TurnQueueSnapshot {
   actors: TurnQueueActorSnapshot[];
 }
 
+export interface TurnQueueStepObserver {
+  beforeAct?(actor: Actor, now: number): void;
+  afterAct?(actor: Actor, continued: boolean, now: number): void;
+}
+
 export class TurnQueue {
   private actors: Actor[] = [];
   private nowTime = 0;
@@ -92,14 +97,17 @@ export class TurnQueue {
    * Returns how many actors acted. The cap prevents an infinite loop if
    * every actor keeps yielding control.
    */
-  run(maxSteps = 100_000): number {
+  run(maxSteps = 100_000, observer?: TurnQueueStepObserver): number {
     let steps = 0;
     while (steps < maxSteps) {
       const actor = this.peek();
       if (!actor) break;
       this.nowTime = actor.time;
+      observer?.beforeAct?.(actor, this.nowTime);
       steps++;
-      if (!actor.act(this.nowTime)) break;
+      const continued = actor.act(this.nowTime);
+      observer?.afterAct?.(actor, continued, this.nowTime);
+      if (!continued) break;
     }
     return steps;
   }
