@@ -16,12 +16,12 @@
   box-sizing: border-box;
   overflow-x: hidden;
   overflow-y: auto;
-  color: #f0eadb;
+  color: var(--bs-text);
   font-family: "SPD Pixel", "Trebuchet MS", "Segoe UI", sans-serif;
   text-shadow: 1px 1px 0 #000;
   -webkit-font-smoothing: none;
   font-smooth: never;
-  background: #060706;
+  background: var(--bs-ink);
 }
 
 /* Frames are mutually exclusive "levels": only the active one is shown. An
@@ -46,12 +46,13 @@
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  background-color: #090b0a;
+  background-color: var(--bs-ink);
   background-image:
-    radial-gradient(120% 62% at 50% 10%, rgba(86, 210, 138, 0.12), transparent 60%),
+    radial-gradient(90% 46% at 50% 0%, rgba(57, 67, 79, 0.46), transparent 62%),
+    radial-gradient(80% 44% at 50% 100%, rgba(179, 42, 38, 0.22), transparent 66%),
     repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.55) 0 2px, transparent 2px 32px),
-    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.022) 0 1px, transparent 1px 64px),
-    linear-gradient(180deg, #161b1d, #0a0d0d 58%, #050606);
+    repeating-linear-gradient(90deg, rgba(205, 214, 224, 0.025) 0 1px, transparent 1px 64px),
+    linear-gradient(180deg, var(--bs-steel-dark), #0d1115 58%, var(--bs-ink));
   background-size: 100% 100%, 100% 32px, 64px 100%, 100% 100%;
   animation: mm-drift 40s linear infinite;
 }
@@ -59,7 +60,7 @@
   content: "";
   position: absolute;
   inset: 0;
-  background: radial-gradient(125% 100% at 50% 36%, transparent 38%, rgba(0, 0, 0, 0.74) 100%);
+  background: radial-gradient(125% 100% at 50% 36%, transparent 34%, rgba(0, 0, 0, 0.8) 100%);
 }
 @keyframes mm-drift {
   from { background-position: 0 0, 0 0, 0 0, 0 0; }
@@ -82,37 +83,70 @@
   display: grid;
   justify-items: center;
   text-align: center;
-  margin: 6px 0 28px;
+  margin: 4px 0 24px;
 }
 #main-menu.mm-root .mm-logo-glow {
   position: absolute;
-  inset: -14% -18% 14% -18%;
+  inset: -18% -24% 4% -24%;
   z-index: 0;
   pointer-events: none;
-  background: radial-gradient(58% 58% at 50% 46%, rgba(86, 224, 140, 0.45), transparent 72%);
-  filter: blur(8px);
+  background:
+    radial-gradient(42% 38% at 35% 50%, rgba(224, 57, 43, 0.5), transparent 72%),
+    radial-gradient(54% 46% at 66% 48%, rgba(205, 214, 224, 0.24), transparent 74%);
+  filter: blur(10px);
   animation: mm-pulse 3.8s ease-in-out infinite;
 }
-#main-menu.mm-root .mm-logo-line {
+#main-menu.mm-root .mm-game-icon {
   position: relative;
   z-index: 1;
-  font-size: 58px;
-  line-height: 0.92;
+  width: min(156px, 40vw);
+  height: min(156px, 40vw);
+  object-fit: contain;
+  image-rendering: pixelated;
+  filter:
+    drop-shadow(0 0 10px rgba(224, 57, 43, 0.18))
+    drop-shadow(5px 7px 0 rgba(0, 0, 0, 0.72));
+}
+#main-menu.mm-root .mm-logo-title {
+  position: relative;
+  z-index: 1;
+  margin-top: 8px;
+  font-size: 32px;
+  line-height: 1;
   letter-spacing: 2px;
-  color: #f4d38a;
+  text-transform: uppercase;
+  color: var(--bs-steel-light);
   text-shadow:
-    0 0 16px rgba(86, 224, 140, 0.55),
-    0 0 36px rgba(86, 224, 140, 0.3),
-    3px 3px 0 #000;
+    0 0 14px rgba(205, 214, 224, 0.22),
+    2px 2px 0 #000;
+}
+#main-menu.mm-root .mm-logo-blood {
+  color: var(--bs-blood-bright);
+}
+#main-menu.mm-root .mm-logo-and {
+  color: var(--bs-steel-muted);
+}
+#main-menu.mm-root .mm-logo-steel {
+  color: var(--bs-steel-light);
+}
+#main-menu.mm-root .mm-logo-title::after {
+  content: "";
+  display: block;
+  width: min(210px, 58vw);
+  height: 1px;
+  margin: 7px auto 0;
+  background:
+    linear-gradient(90deg, transparent, var(--bs-blood-deep) 24%, var(--bs-blood-bright) 50%, var(--bs-blood-deep) 76%, transparent);
+  box-shadow: 0 0 8px rgba(224, 57, 43, 0.38);
 }
 #main-menu.mm-root .mm-logo-sub {
   position: relative;
   z-index: 1;
-  margin-top: 12px;
-  font-size: 16px;
+  margin-top: 5px;
+  font-size: 11px;
   letter-spacing: 4px;
-  color: #a4ecc4;
-  text-shadow: 0 0 10px rgba(86, 224, 140, 0.55), 1px 1px 0 #000;
+  color: var(--bs-steel-muted);
+  text-shadow: 0 0 10px rgba(205, 214, 224, 0.2), 1px 1px 0 #000;
 }
 @keyframes mm-pulse {
   0%, 100% { opacity: 0.72; }
@@ -122,14 +156,14 @@
 /* --- buttons --- */
 #main-menu.mm-root .mm-actions {
   display: grid;
-  gap: 6px;
+  gap: 9px;
   width: min(340px, 100%);
   justify-self: center;
   margin: 0 auto;
 }
 #main-menu.mm-root .mm-button {
-  min-height: 38px;
-  border: 2px solid #c7cec0;
+  min-height: 46px;
+  border: 2px solid var(--bs-steel-light);
   outline: 2px solid rgba(31, 37, 30, 0.95);
   outline-offset: -4px;
   box-shadow:
@@ -140,7 +174,7 @@
   padding: 3px 9px 3px 4px;
   color: #ffffff;
   background:
-    linear-gradient(180deg, rgba(66, 72, 63, 0.94), rgba(43, 49, 41, 0.94));
+    linear-gradient(180deg, rgba(57, 67, 79, 0.94), rgba(24, 32, 38, 0.96));
   cursor: pointer;
   font: 20px "SPD Pixel", "Trebuchet MS", "Segoe UI", sans-serif;
   letter-spacing: 0;
@@ -200,14 +234,22 @@
 }
 #main-menu.mm-root .mm-button-primary {
   color: #ffffff;
-  font-size: 21px;
-  min-height: 40px;
+  font-size: 22px;
+  min-height: 52px;
+  border-image: var(--spd-button-frame-red) 2 fill / 8px / 0 stretch;
+  background:
+    linear-gradient(180deg, rgba(122, 21, 24, 0.78), rgba(74, 13, 13, 0.72));
+  box-shadow:
+    inset 0 0 0 2px rgba(224, 57, 43, 0.38),
+    inset 0 4px 0 rgba(255, 106, 61, 0.12),
+    inset 0 -5px 0 rgba(0, 0, 0, 0.3),
+    3px 3px 0 rgba(0, 0, 0, 0.85);
 }
 #main-menu.mm-root .mm-button-wide { width: 100%; }
 #main-menu.mm-root .mm-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 7px;
+  gap: 9px;
 }
 #main-menu.mm-root .mm-button-tile { width: 100%; }
 #main-menu.mm-root .mm-button-disabled {
@@ -234,14 +276,14 @@
   letter-spacing: 0;
   padding: 1px 4px;
   color: #100d08;
-  background: #cdb46a;
+  background: var(--bs-gold);
   text-shadow: none;
   box-shadow: 1px 1px 0 #000;
 }
 #main-menu.mm-root .mm-status {
   margin: 6px 0 0;
   text-align: center;
-  color: #9fb0a2;
+  color: var(--bs-steel-muted);
   font-size: 13px;
 }
 
@@ -257,7 +299,7 @@
   overflow: hidden;
   border: 14px solid transparent;
   border-image: var(--spd-window-frame) 6 fill / 14px / 0 round;
-  background: rgba(8, 11, 11, 0.62);
+  background: rgba(8, 9, 11, 0.72);
   backdrop-filter: blur(2px);
 }
 #main-menu.mm-root .mm-window-header {
@@ -268,12 +310,12 @@
 }
 #main-menu.mm-root .mm-window-heading h2 {
   margin: 0 0 3px;
-  color: #f4d38a;
+  color: var(--bs-steel-light);
   font-size: 22px;
 }
 #main-menu.mm-root .mm-window-heading p {
   margin: 0;
-  color: #9fb0a2;
+  color: var(--bs-steel-muted);
   font-size: 12px;
 }
 #main-menu.mm-root .mm-back {
@@ -282,37 +324,148 @@
   font-size: 13px;
 }
 
-#main-menu.mm-root .mm-hero-list,
 #main-menu.mm-root .mm-history-list,
 #main-menu.mm-root .mm-about {
   overflow-y: auto;
 }
-#main-menu.mm-root .mm-hero-list { display: grid; gap: 10px; }
-#main-menu.mm-root .mm-hero-card {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
+
+/* --- hero select (full-bleed: hero art + bottom button dock) --- */
+#main-menu.mm-root .mm-heroselect {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+  background: var(--bs-ink);
+  animation: mm-frame-in 0.2s ease-out both;
+}
+#main-menu.mm-root .mm-hero-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-position: center top;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+/* Heroes without art (mage, locked) fall back to the dark dungeon backdrop. */
+#main-menu.mm-root .mm-hero-bg.is-empty {
+  background-color: var(--bs-ink);
+  background-image:
+    radial-gradient(95% 48% at 50% 8%, rgba(57, 67, 79, 0.38), transparent 60%),
+    radial-gradient(70% 42% at 50% 100%, rgba(179, 42, 38, 0.2), transparent 66%),
+    linear-gradient(180deg, var(--bs-steel-dark), #0d1115 58%, var(--bs-ink));
+}
+#main-menu.mm-root .mm-hero-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.58) 0%,
+    transparent 22%,
+    transparent 50%,
+    rgba(0, 0, 0, 0.86) 100%
+  );
+}
+#main-menu.mm-root .mm-hero-top {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px;
+}
+#main-menu.mm-root .mm-hero-backbtn {
+  flex: 0 0 auto;
+  width: auto;
+  padding: 8px 12px;
+  font-size: 13px;
+}
+#main-menu.mm-root .mm-hero-heading { margin-top: 4px; }
+#main-menu.mm-root .mm-hero-heading h2 {
+  margin: 0;
+  color: var(--bs-steel-light);
+  font-size: 24px;
+  text-shadow: 0 0 14px rgba(205, 214, 224, 0.24), 2px 2px 0 #000;
+}
+#main-menu.mm-root .mm-hero-statline {
+  margin: 2px 0 0;
+  color: var(--bs-blood-bright);
+  font-size: 13px;
+  text-shadow: 0 0 10px rgba(224, 57, 43, 0.34), 1px 1px 0 #000;
+}
+#main-menu.mm-root .mm-hero-foot {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
   align-items: center;
   gap: 12px;
-  padding: 12px;
-  text-align: left;
-  color: #f5ebd0;
-  background: transparent;
+  padding: 0 14px 16px;
+}
+#main-menu.mm-root .mm-hero-blurb {
+  margin: 0;
+  max-width: 460px;
+  text-align: center;
+  color: var(--bs-text);
+  font-size: 13px;
+  line-height: 1.4;
+}
+#main-menu.mm-root .mm-hero-embark { width: min(340px, 100%); }
+#main-menu.mm-root .mm-hero-dock {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  width: min(520px, 100%);
+}
+#main-menu.mm-root .mm-hero-pick {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 6px;
+  padding: 10px 4px;
   cursor: pointer;
+  color: #f5ebd0;
+  background: rgba(8, 11, 11, 0.55);
   border: 8px solid transparent;
   border-image: var(--spd-button-frame-grey) 4 fill / 8px / 0 stretch;
+  image-rendering: pixelated;
 }
-#main-menu.mm-root .mm-hero-card:hover { filter: brightness(1.18); }
-#main-menu.mm-root .mm-hero-portrait {
-  width: 40px;
-  height: 44px;
-  border: 2px solid rgba(244, 211, 138, 0.36);
-  background: linear-gradient(180deg, rgba(42, 51, 48, 0.92), rgba(8, 10, 10, 0.92));
+#main-menu.mm-root .mm-hero-pick:hover:not(:disabled) { filter: brightness(1.18); }
+#main-menu.mm-root .mm-hero-pick:active:not(:disabled) { transform: translateY(1px); }
+#main-menu.mm-root .mm-hero-pick.is-selected {
+  border-image-source: var(--spd-button-frame-red);
+  box-shadow:
+    inset 0 0 0 2px rgba(224, 57, 43, 0.45),
+    0 0 14px rgba(224, 57, 43, 0.32);
 }
-#main-menu.mm-root .mm-hero-copy { display: grid; gap: 4px; }
-#main-menu.mm-root .mm-hero-copy strong { color: #fff1b7; font-size: 16px; }
-#main-menu.mm-root .mm-hero-stats { color: #89c7b3; font-size: 12px; }
-#main-menu.mm-root .mm-hero-copy small { color: #a9b7aa; font-size: 12px; line-height: 1.35; }
-#main-menu.mm-root .mm-hero-go { color: #89c7b3; font-size: 16px; }
+#main-menu.mm-root .mm-hero-pick-portrait {
+  display: block;
+  image-rendering: pixelated;
+}
+#main-menu.mm-root .mm-hero-pick-q {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 60px;
+  font-size: 30px;
+  color: var(--bs-steel-muted);
+  background: rgba(0, 0, 0, 0.3);
+}
+#main-menu.mm-root .mm-hero-pick-label {
+  font-size: 13px;
+  color: var(--bs-steel-light);
+  text-shadow: 1px 1px 0 #000;
+}
+#main-menu.mm-root .mm-hero-pick-locked {
+  cursor: default;
+  opacity: 0.6;
+  filter: grayscale(0.5);
+}
+#main-menu.mm-root .mm-hero-pick-locked .mm-hero-pick-label { color: #9fb0a2; }
 
 #main-menu.mm-root .mm-history-list { display: grid; gap: 8px; }
 #main-menu.mm-root .mm-history-row {
@@ -322,7 +475,7 @@
   border: 8px solid transparent;
   border-image: var(--spd-button-frame) 4 fill / 8px / 0 stretch;
 }
-#main-menu.mm-root .mm-history-row strong { color: #fff1b7; font-size: 13px; }
+#main-menu.mm-root .mm-history-row strong { color: var(--bs-steel-light); font-size: 13px; }
 #main-menu.mm-root .mm-history-row span { color: #f0eadb; font-size: 12px; }
 #main-menu.mm-root .mm-history-row small { color: #a9b7aa; font-size: 11px; }
 
@@ -338,23 +491,27 @@
   font-size: 13px;
   line-height: 1.45;
 }
-#main-menu.mm-root .mm-about em { color: #f4d38a; font-style: normal; }
-#main-menu.mm-root .mm-about-credit { color: #89c7b3; font-size: 12px; }
+#main-menu.mm-root .mm-about em { color: var(--bs-gold); font-style: normal; }
+#main-menu.mm-root .mm-about-credit { color: var(--bs-steel-muted); font-size: 12px; }
 
 #main-menu.mm-root .mm-footer {
   position: fixed;
   right: 12px;
   bottom: 10px;
   z-index: 2;
-  color: #6f7c70;
+  color: var(--bs-steel-muted);
   font-size: 11px;
   pointer-events: none;
 }
 
 @media (max-width: 480px) {
   #main-menu.mm-root .mm-scene { width: calc(100vw - 20px); padding-top: 22px; }
-  #main-menu.mm-root .mm-logo-line { font-size: 46px; }
-  #main-menu.mm-root .mm-logo-sub { font-size: 14px; letter-spacing: 3px; }
+  #main-menu.mm-root .mm-game-icon {
+    width: min(128px, 42vw);
+    height: min(128px, 42vw);
+  }
+  #main-menu.mm-root .mm-logo-title { font-size: 22px; }
+  #main-menu.mm-root .mm-logo-sub { font-size: 10px; letter-spacing: 2px; }
   #main-menu.mm-root .mm-actions { width: min(310px, 100%); }
   #main-menu.mm-root .mm-button {
     grid-template-columns: 40px minmax(0, 1fr);
@@ -367,4 +524,7 @@
     width: 30px;
     height: 26px;
   }
+  #main-menu.mm-root .mm-hero-heading h2 { font-size: 20px; }
+  #main-menu.mm-root .mm-hero-dock { gap: 6px; }
+  #main-menu.mm-root .mm-hero-pick { padding: 8px 2px; }
 }

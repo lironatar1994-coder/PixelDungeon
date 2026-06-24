@@ -75,6 +75,34 @@ describe("sewer regular level plans", () => {
     expect(boss.rooms.some((room) => room.id === "goo" && room.className?.endsWith("GooRoom"))).toBe(true);
     expect(boss.rooms.some((room) => room.className === "RatKingRoom")).toBe(true);
   });
+
+  it("uses original sewer trap pools and weights", () => {
+    const depth1 = createSewerRegularLevelPlan(1, new RNG("depth-1-traps"), {
+      feeling: "none",
+      secretRoomCount: 0,
+    });
+    expect(depth1.painter.trapKinds).toEqual(["wornDart"]);
+    expect(depth1.painter.trapChances).toEqual([1]);
+
+    const depth2 = createSewerRegularLevelPlan(2, new RNG("depth-2-traps"), {
+      feeling: "none",
+      secretRoomCount: 0,
+    });
+    expect(depth2.painter.trapKinds).toEqual([
+      "chilling",
+      "shocking",
+      "toxic",
+      "wornDart",
+      "alarm",
+      "ooze",
+      "confusion",
+      "flock",
+      "summoning",
+      "teleportation",
+      "gateway",
+    ]);
+    expect(depth2.painter.trapChances).toEqual([4, 4, 4, 4, 2, 2, 1, 1, 1, 1, 1]);
+  });
 });
 
 describe("regular builders", () => {
@@ -201,6 +229,36 @@ describe("sewer regular painter integration", () => {
     }
   });
 
+  it("places visible worn dart traps on depth 1", () => {
+    const plan = createSewerRegularLevelPlan(1, new RNG("dart-plan"), {
+      builderKind: "loop",
+      feeling: "none",
+      secretRoomCount: 0,
+    });
+    const level = generateLevel(40, 40, new RNG("dart-map"), { plan });
+    expect(level.trapMetadata?.length).toBeGreaterThan(0);
+    for (const trap of level.trapMetadata ?? []) {
+      expect(trap.kind).toBe("wornDart");
+      expect(trap.visible).toBe(true);
+      expect(trap.canBeHidden).toBe(false);
+      expect(trap.avoidsHallways).toBe(true);
+      expect(level.grid.get(trap.cell)).toBe(Terrain.TRAP);
+      expect(isNonHallway(level.grid, trap.cell)).toBe(true);
+    }
+  });
+
+  it("places five times as many traps on traps-feeling floors and reveals the extras", () => {
+    const plan = createSewerRegularLevelPlan(3, new RNG("traps-feeling-plan"), {
+      builderKind: "figureEight",
+      feeling: "traps",
+      secretRoomCount: 0,
+    });
+    const level = generateLevel(40, 40, new RNG("traps-feeling-map"), { plan });
+    expect(level.trapMetadata?.length).toBe(plan.painter.trapCount * 5);
+    const visibleCount = (level.trapMetadata ?? []).filter((trap) => trap.visible).length;
+    expect(visibleCount).toBeGreaterThanOrEqual(plan.painter.trapCount * 4);
+  });
+
   it("keeps painted sewer exits and room centers reachable across depths", () => {
     for (const seed of ["painted-reach-a", "painted-reach-b"]) {
       const plans = buildDungeonGenerationPlans(seed, 26);
@@ -270,3 +328,14 @@ describe("sewer regular painter integration", () => {
     ))).toBe(true);
   });
 });
+
+function isNonHallway(grid: ReturnType<typeof generateLevel>["grid"], cell: number): boolean {
+  const north = cell - grid.width;
+  const south = cell + grid.width;
+  const east = cell + 1;
+  const west = cell - 1;
+  return (
+    (grid.inBoundsCell(north) && grid.isWalkable(north) || grid.inBoundsCell(south) && grid.isWalkable(south)) &&
+    (grid.inBoundsCell(east) && grid.isWalkable(east) || grid.inBoundsCell(west) && grid.isWalkable(west))
+  );
+}

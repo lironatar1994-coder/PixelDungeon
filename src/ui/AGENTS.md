@@ -12,6 +12,10 @@ Antigravity AI
 
 # Work Guidance
 - Render log tone prefixes from core (`++`, `--`, `**`, `@@`) as color classes, not visible text.
+- Keep the main HUD faithful to upstream SPD `StatusPane` and `Toolbar` geometry: status pane shows portrait, level, HP, EXP, and compass/depth only; bottom actions use `toolbar.png` frame coordinates, pack quickslots/tools as one strip, and use SPD's 4/5/6 visible quickslot width thresholds.
+- Use `public/assets/icon_game.png` for visible main-menu game branding; do not substitute generic text-only logos when the icon asset is available.
+- Treat **Blood and Steel** as the main game title in UI. Prefer blood-red primary actions, cold-steel surfaces, and rare gold accents over the old green/mint menu palette.
+- Keep the magnifier faithful to SPD: first activation enters examine/look targeting, activating it again while examining performs intentional search through the world action.
 - Ensure mobile layout splits controls comfortably for thumb zones.
 - Support keypress overrides (e.g. Escape closing menus).
 - RTL and Hebrew UI support as per general preferences.

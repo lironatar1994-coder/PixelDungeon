@@ -11,6 +11,13 @@ import type { InventoryItem } from "@/core/items/Inventory";
 export interface WorldTimedEffect {
   id: string;
   turns: number;
+  cells?: number[];
+  kind?: "freezing" | "electricity" | "toxicGas" | "confusionGas" | "flock";
+  damagePerTurn?: number;
+  stat?: "speed" | "accuracy" | "evasion";
+  amount?: number;
+  blocksMovement?: boolean;
+  source?: string;
 }
 
 export interface PotionEffectContext {

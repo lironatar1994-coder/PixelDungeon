@@ -17,6 +17,7 @@ export type HeroAction =
   | { kind: "attack"; target: number }
   | { kind: "rangedAttack"; target: number }
   | { kind: "pickUp" }
+  | { kind: "search" }
   | { kind: "wait" };
 
 /** What the hero needs from the world to resolve an attack. */

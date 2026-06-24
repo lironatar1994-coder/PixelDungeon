@@ -77,6 +77,8 @@ Default section order:
 ## User Preferences
 
 When the user requests a durable behavior change, record it here or in the relevant child AGENTS.md
+- Use `public/assets/icon_game.png` as the canonical app/game icon for browser metadata and visible menu branding.
+- Treat **Blood and Steel** as the primary game identity; use a cold-steel and blood-red theme for app/menu branding while preserving SPD-faithful gameplay structure.
 
 ## Child DOX Index
 

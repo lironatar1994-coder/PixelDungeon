@@ -39,6 +39,10 @@ export class FieldOfView {
       this.visible.add(cell);
       this.explored.add(cell);
     }
+    for (const cell of grid.neighbours8(origin)) {
+      this.explored.add(cell);
+    }
+    this.explored.add(origin);
   }
 
   isVisible(cell: number): boolean {

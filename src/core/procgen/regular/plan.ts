@@ -11,6 +11,7 @@ import type {
   SizeCategory,
 } from "./types";
 import { chooseSizeCategoryForFamily } from "./rooms";
+import { sewerTrapsForDepth } from "@/core/traps/registry";
 
 export interface SewerPlanOverrides {
   feeling?: LevelFeeling;
@@ -71,7 +72,7 @@ export function createSewerRegularLevelPlan(
   rng: RNG,
   overrides: SewerPlanOverrides = {},
 ): RegularLevelPlan {
-  const feeling = overrides.feeling ?? chooseFeeling(rng);
+  const feeling = overrides.feeling ?? chooseFeeling(depth, rng);
   const builderKind = overrides.builderKind ?? (rng.nextInt(2) === 0 ? "loop" : "figureEight");
   const baseStandards = feeling === "large" ? 6 : 4 + weightedIndex(rng, [1, 3, 1]);
   const standardRoomBudget = feeling === "large" ? Math.ceil(baseStandards * 1.5) : baseStandards;
@@ -135,6 +136,7 @@ export function createSewerBossLevelPlan(rng: RNG): RegularLevelPlan {
       grassSmoothness: 4,
       trapCount: 0,
       trapKinds: [],
+      trapChances: [],
     },
     rooms,
   };
@@ -193,20 +195,28 @@ function createBuilderConfig(kind: BuilderKind, rng: RNG): RegularBuilderConfig 
 }
 
 function createSewerPainterConfig(depth: number, feeling: LevelFeeling, rng: RNG): RegularPainterConfig {
+  const traps = sewerTrapsForDepth(depth);
   return {
     waterFill: feeling === "water" ? 0.85 : 0.3,
     waterSmoothness: 5,
     grassFill: feeling === "grass" ? 0.8 : 0.2,
     grassSmoothness: 4,
     trapCount: normalIntRange(rng, 2, 3 + Math.floor(depth / 5)),
-    trapKinds: depth === 1
-      ? ["wornDart"]
-      : ["chilling", "shocking", "toxic", "wornDart", "alarm", "ooze", "confusion", "flock", "summoning", "teleportation", "gateway"],
+    trapKinds: traps.map((trap) => trap.kind),
+    trapChances: traps.map((trap) => trap.weight),
   };
 }
 
-function chooseFeeling(rng: RNG): LevelFeeling {
-  return rng.pick(["none", "none", "none", "water", "grass", "large", "secrets"] as const);
+function chooseFeeling(depth: number, rng: RNG): LevelFeeling {
+  if (depth <= 1) return "none";
+  switch (rng.nextInt(14)) {
+    case 1: return "water";
+    case 2: return "grass";
+    case 4: return "large";
+    case 5: return "traps";
+    case 6: return "secrets";
+    default: return "none";
+  }
 }
 
 function chooseEntrance(depth: number, rng: RNG): { family: RoomFamily; className: string } {

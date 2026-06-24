@@ -31,16 +31,18 @@ export enum Terrain {
   REGION_DECO = 8,
   /** Alternate region decoration, used by ring-room centers. */
   REGION_DECO_ALT = 9,
-  /** Hidden door metadata. Walkable here until search/hidden-door gameplay is ported. */
+  /** Hidden door: behaves as a wall until intentional search reveals it. */
   SECRET_DOOR = 10,
-  /** Visible trap marker. Kept walkable; trap behavior is metadata-driven for now. */
+  /** Visible active trap marker. Trap behavior is driven by level metadata. */
   TRAP = 11,
-  /** Hidden trap marker. Kept walkable; trap behavior is metadata-driven for now. */
+  /** Hidden active trap marker. Looks like floor until searched or triggered. */
   SECRET_TRAP = 12,
   /** Boss-floor locked exit tile. Walkable so current transition code remains compatible. */
   LOCKED_EXIT = 13,
   /** Chasm-like blocked space used by some original room painters. */
   CHASM = 14,
+  /** Visible disarmed trap marker. Safe and walkable after one-shot trap activation. */
+  INACTIVE_TRAP = 15,
 }
 
 export interface CellProperties {
@@ -63,9 +65,10 @@ export const TERRAIN_PROPERTIES: Record<Terrain, CellProperties> = {
   [Terrain.WALL_DECO]: { solid: true, walkable: false, transparent: false },
   [Terrain.REGION_DECO]: { solid: false, walkable: true, transparent: true },
   [Terrain.REGION_DECO_ALT]: { solid: false, walkable: true, transparent: true },
-  [Terrain.SECRET_DOOR]: { solid: false, walkable: true, transparent: true },
+  [Terrain.SECRET_DOOR]: { solid: true, walkable: false, transparent: false },
   [Terrain.TRAP]: { solid: false, walkable: true, transparent: true },
   [Terrain.SECRET_TRAP]: { solid: false, walkable: true, transparent: true },
   [Terrain.LOCKED_EXIT]: { solid: false, walkable: true, transparent: true },
   [Terrain.CHASM]: { solid: true, walkable: false, transparent: true },
+  [Terrain.INACTIVE_TRAP]: { solid: false, walkable: true, transparent: true },
 };

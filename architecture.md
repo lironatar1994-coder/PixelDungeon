@@ -1003,3 +1003,43 @@ stairs/loot. Core terrain gained serializable aliases such as `EMPTY_SP`,
 `LOCKED_EXIT`; rendering maps them onto existing sewer sprites without changing
 the public `generateLevel`, `DungeonManager`, `LevelSnapshot`, `rooms`,
 `entrance`, `exit`, or `groundItems` contracts.
+
+### Phase 20.2 - SPD Search, Secrets, and Fog Overlay COMPLETE
+Added the original magnifier/search interaction as a real hero turn. The
+toolbar Search/Look button first enters examine targeting, then a second
+activation calls **`GameWorld.search()`**
+([src/core/game/GameWorld.ts](src/core/game/GameWorld.ts)), revealing visible
+adjacent `SECRET_DOOR` cells into `DOOR`, `SECRET_TRAP` cells into `TRAP`, and
+marking matching trap metadata visible. `SECRET_DOOR` now behaves like SPD's
+hidden wall until discovered, while `SECRET_TRAP` remains passable floor until
+revealed.
+
+Fog now follows the original split between core memory and render overlay.
+**`FieldOfView`** ([src/core/fov/FieldOfView.ts](src/core/fov/FieldOfView.ts))
+still recomputes visibility only after world actions, but it also remembers the
+hero's adjacent 8 cells like `Dungeon.observe()`. **`MapScene`**
+([src/render/MapScene.ts](src/render/MapScene.ts)) draws terrain at normal
+brightness and applies an SPD-style black fog overlay afterward: visible tiles
+are transparent, explored tiles use `0x99/0xff` opacity, unseen tiles are fully
+black, and wall cells use half-tile side rules so hidden wall edges do not leak
+through fog.
+
+### Phase 20.3 - Playable Sewer Trap Runtime COMPLETE
+Ported sewer traps from static map metadata into a headless gameplay lifecycle.
+**`src/core/traps/registry.ts`** now owns the sewer trap identities, placement
+weights, hidden/search flags, hallway avoidance, and disarm behavior shared by
+procgen and runtime. **`RegularPainter`** places traps like SPD's
+`paintTraps`: valid room trap points only, one trap per five valid cells,
+non-hallway preference for traps that request it, weighted sewer trap classes,
+visible WornDart traps on depth 1, and 5x visible extras for `traps` feeling
+floors.
+
+**`GameWorld`** ([src/core/game/GameWorld.ts](src/core/game/GameWorld.ts)) now
+presses actor destination cells after movement. Heroes hard-press hidden and
+visible traps, enemies soft-press only visible traps, search still only reveals
+adjacent searchable hidden traps, one-shot traps disarm to `INACTIVE_TRAP`, and
+Gateway traps remain active with their saved destination. Sewer trap effects
+cover WornDart damage, Alarm beckoning, Summoning, Teleportation, Gateway,
+Ooze, Flock blockers, and serializable headless hazards for chilling,
+shocking, toxic gas, and confusion gas. Runtime randomness uses a scoped trap
+RNG saved on `GameWorldSnapshot`, and `worldEffects` persists active hazards.

@@ -1,7 +1,7 @@
 import type { Rect } from "@/core/grid/Rect";
 
 export type RegularRegion = "sewer";
-export type LevelFeeling = "none" | "water" | "grass" | "large" | "secrets";
+export type LevelFeeling = "none" | "water" | "grass" | "large" | "traps" | "secrets";
 export type BuilderKind = "loop" | "figureEight";
 export type RoomRole = "entrance" | "exit" | "standard" | "special" | "secret" | "connection" | "shop";
 export type RoomFamily =
@@ -53,6 +53,7 @@ export interface RegularPainterConfig {
   grassSmoothness: number;
   trapCount: number;
   trapKinds: readonly string[];
+  trapChances: readonly number[];
 }
 
 export interface RegularLevelPlan {
@@ -85,6 +86,11 @@ export interface GeneratedTrapMetadata {
   kind: string;
   visible: boolean;
   active: boolean;
+  canBeHidden?: boolean;
+  canBeSearched?: boolean;
+  avoidsHallways?: boolean;
+  disarmedByActivation?: boolean;
+  gatewayTargetCell?: number;
 }
 
 export interface BuiltRegularLevel {

@@ -35,6 +35,8 @@ import { ItemFactory } from "@/core/items/ItemFactory";
 import type { WorldTimedEffect } from "@/core/items/PotionEffects";
 import { ContentDatabase, type ContentDatabase as ContentDatabaseType } from "@/core/data/ContentDatabase";
 import type { HeroDef } from "@/core/data/types";
+import { hydrateTrap, trapDefinition, type HydratedTrapMetadata } from "@/core/traps/registry";
+import type { GeneratedTrapMetadata } from "@/core/procgen/regular/types";
 
 /** Payload emitted whenever the hero loses hit points. */
 export interface HeroDamagedInfo {
@@ -84,6 +86,11 @@ export interface HeroLevelUpInfo {
   level: number;
 }
 
+export interface TrapTriggeredInfo {
+  cell: number;
+  kind: string;
+}
+
 export interface WorldOptions {
   /** How far the hero can see (the player's fog radius — not enemy content). */
   visionRadius?: number;
@@ -108,6 +115,8 @@ export interface WorldOptions {
   onItemQuaffed?: (info: ItemQuaffedInfo) => void;
   /** Fired after the hero gains one or more levels. */
   onHeroLevelUp?: (info: HeroLevelUpInfo) => void;
+  /** Fired when a trap activates; the composition root may play SFX. */
+  onTrapTriggered?: (info: TrapTriggeredInfo) => void;
 }
 
 export interface EnemySnapshot {
@@ -140,6 +149,7 @@ export interface GameWorldSnapshot {
   queue: TurnQueueSnapshot;
   combatRngState: number;
   enemyAiRngState: number;
+  trapRngState?: number;
   heroDead: boolean;
   log: string[];
   worldEffects?: WorldTimedEffect[];
@@ -192,12 +202,15 @@ export class GameWorld {
   private readonly onActorDeath?: (info: ActorDeathInfo) => void;
   private readonly onItemPickup?: (info: ItemPickupInfo) => void;
   private readonly onHeroLevelUp?: (info: HeroLevelUpInfo) => void;
+  private readonly onTrapTriggered?: (info: TrapTriggeredInfo) => void;
   private enemyAiRng = new RNG(0);
+  private trapRng: RNG;
 
   private queue = new TurnQueue();
   private hero!: Hero;
   private inventoryRef!: Inventory;
   private enemyList: Enemy[] = [];
+  private worldEffects: WorldTimedEffect[] = [];
   public heroDead = false;
   public deathReason: string | undefined;
   private readonly logLines: string[] = [];
@@ -207,6 +220,7 @@ export class GameWorld {
     this.heroProfile = this.resolveHeroProfile(opts.heroId);
     this.dungeon = new DungeonManager(seed, lootConfigForContent(content));
     this.combatRng = new RNG(`${seed}:combat`);
+    this.trapRng = new RNG(`${seed}:trap-runtime`);
     this.visionRadius = opts.visionRadius ?? 8;
     this.enemyCount = opts.enemyCount ?? 6;
     this.onChange = opts.onChange;
@@ -217,6 +231,7 @@ export class GameWorld {
     this.onActorDeath = opts.onActorDeath;
     this.onItemPickup = opts.onItemPickup;
     this.onHeroLevelUp = opts.onHeroLevelUp;
+    this.onTrapTriggered = opts.onTrapTriggered;
 
     this.createHero(); // the hero persists across floors
     this.enterFloor();
@@ -225,7 +240,7 @@ export class GameWorld {
   static fromSnapshot(
     snapshot: GameWorldSnapshot,
     content: ContentDatabaseType,
-    opts: Pick<WorldOptions, "onChange" | "onLog" | "onHeroDamaged" | "onCombatStrike" | "onActorMove" | "onActorDeath" | "onItemPickup" | "onItemQuaffed" | "onHeroLevelUp"> = {},
+    opts: Pick<WorldOptions, "onChange" | "onLog" | "onHeroDamaged" | "onCombatStrike" | "onActorMove" | "onActorDeath" | "onItemPickup" | "onItemQuaffed" | "onHeroLevelUp" | "onTrapTriggered"> = {},
   ): GameWorld {
     const world = new GameWorld(snapshot.seed, content, {
       visionRadius: snapshot.visionRadius,
@@ -240,6 +255,7 @@ export class GameWorld {
       onItemPickup: opts.onItemPickup,
       onItemQuaffed: opts.onItemQuaffed,
       onHeroLevelUp: opts.onHeroLevelUp,
+      onTrapTriggered: opts.onTrapTriggered,
     });
     world.restore(snapshot);
     return world;
@@ -421,6 +437,7 @@ export class GameWorld {
 
   isOccupied(cell: number): boolean {
     if (this.hero.pos === cell) return true;
+    if (this.worldEffects.some((effect) => effect.blocksMovement && effect.cells?.includes(cell))) return true;
     return this.enemyList.some((e) => e.pos === cell);
   }
 
@@ -615,6 +632,17 @@ export class GameWorld {
     return true;
   }
 
+  search(): boolean {
+    if (this.heroDead) return false;
+    const found = this.revealSearchableCells();
+    if (found > 0) {
+      this.pushLog(warningLog("You noticed something."));
+    }
+    this.hero.pending = { kind: "search" };
+    this.processTurns();
+    return true;
+  }
+
   tryPickUpItem(): boolean {
     if (this.heroDead) return false;
     const groundItem = this.level.itemAt(this.hero.pos);
@@ -660,6 +688,45 @@ export class GameWorld {
     this.hero.pending = { kind: "rangedAttack", target: targetCell };
     this.processTurns();
     return true;
+  }
+
+  private revealSearchableCells(): number {
+    const radius = 1;
+    const heroX = this.grid.xOf(this.hero.pos);
+    const heroY = this.grid.yOf(this.hero.pos);
+    let found = 0;
+
+    for (let y = heroY - radius; y <= heroY + radius; y++) {
+      for (let x = heroX - radius; x <= heroX + radius; x++) {
+        if (!this.grid.inBounds(x, y)) continue;
+        const cell = this.grid.cell(x, y);
+        if (cell === this.hero.pos || !this.fov.visible.has(cell)) continue;
+        const terrain = this.grid.get(cell);
+
+        if (terrain === Terrain.SECRET_DOOR) {
+          this.grid.set(cell, Terrain.DOOR);
+          this.level.openDoors.delete(cell);
+          found++;
+        } else if (terrain === Terrain.SECRET_TRAP && this.trapAt(cell)?.canBeSearched !== false) {
+          this.grid.set(cell, Terrain.TRAP);
+          this.revealTrapMetadata(cell);
+          found++;
+        }
+      }
+    }
+
+    return found;
+  }
+
+  private revealTrapMetadata(cell: number): void {
+    for (const trap of this.level.trapMetadata) {
+      if (trap.cell === cell) trap.visible = true;
+    }
+  }
+
+  private trapAt(cell: number): HydratedTrapMetadata | null {
+    const trap = this.level.trapMetadata.find((candidate) => candidate.cell === cell);
+    return trap ? hydrateTrap(trap) : null;
   }
 
   // --- turn flow ---
@@ -717,14 +784,369 @@ export class GameWorld {
         const toCell = this.actorCell(actor);
         const actorId = this.actorId(actor);
         if (toCell !== null && actorId !== null && toCell !== fromCell) {
-          this.onActorMove?.({ actorId, fromCell, toCell });
+          this.pressCell(toCell, actor === this.hero, actor as Hero | Enemy);
+          const finalCell = this.actorCell(actor);
+          if (finalCell !== null) this.onActorMove?.({ actorId, fromCell, toCell: finalCell });
         }
       },
     });
     this.queue.fixTime();
+    this.tickWorldEffects();
     this.checkOpenDoors();
     this.recomputeFOV();
     this.emitChange();
+  }
+
+  private pressCell(cell: number, hard: boolean, actor: Hero | Enemy): void {
+    const terrain = this.grid.get(cell);
+    if (terrain !== Terrain.TRAP && terrain !== Terrain.SECRET_TRAP) return;
+    if (terrain === Terrain.SECRET_TRAP && !hard) return;
+
+    const trap = this.mutableTrapAt(cell);
+    if (!trap || !trap.active) return;
+    if (terrain === Terrain.SECRET_TRAP && actor === this.hero) {
+      this.pushLog(warningLog(`You triggered a hidden ${trapDefinition(trap.kind).name}.`));
+    }
+    this.triggerTrap(trap, actor);
+  }
+
+  private mutableTrapAt(cell: number): GeneratedTrapMetadata | null {
+    const trap = this.level.trapMetadata.find((candidate) => candidate.cell === cell) ?? null;
+    if (trap) Object.assign(trap, hydrateTrap(trap));
+    return trap;
+  }
+
+  private triggerTrap(trap: GeneratedTrapMetadata, triggeringActor: Hero | Enemy): void {
+    const hydrated = hydrateTrap(trap);
+    Object.assign(trap, hydrated, { visible: true });
+    this.onTrapTriggered?.({ cell: trap.cell, kind: trap.kind });
+    if (hydrated.disarmedByActivation) {
+      trap.active = false;
+      this.grid.set(trap.cell, Terrain.INACTIVE_TRAP);
+    } else {
+      this.grid.set(trap.cell, Terrain.TRAP);
+    }
+
+    switch (trap.kind) {
+      case "wornDart":
+        this.activateWornDartTrap(trap.cell);
+        break;
+      case "alarm":
+        this.activateAlarmTrap(trap.cell);
+        break;
+      case "summoning":
+        this.activateSummoningTrap(trap.cell);
+        break;
+      case "teleportation":
+        this.activateTeleportationTrap(trap.cell);
+        break;
+      case "gateway":
+        this.activateGatewayTrap(trap);
+        break;
+      case "chilling":
+        this.activateHazardTrap("freezing", trap.cell, 3);
+        break;
+      case "shocking":
+        this.activateHazardTrap("electricity", trap.cell, 2);
+        break;
+      case "toxic":
+        this.activateHazardTrap("toxicGas", trap.cell, 6 + this.depth);
+        break;
+      case "confusion":
+        this.activateHazardTrap("confusionGas", trap.cell, 6 + this.depth);
+        break;
+      case "ooze":
+        this.activateOozeTrap(trap.cell);
+        break;
+      case "flock":
+        this.activateFlockTrap(trap.cell, triggeringActor);
+        break;
+    }
+  }
+
+  private activateWornDartTrap(cell: number): void {
+    const target = this.actorAt(cell) ?? this.nearestLineOfFireActor(cell, Math.max(6, this.visionRadius) + 0.5);
+    if (!target) return;
+    const damage = Math.max(0, normalIntRange(this.trapRng, 4, 8) - Math.floor(this.trapRng.next() * (target.stats.armor + 1)));
+    this.damageActor(target, damage, "worn dart trap");
+  }
+
+  private nearestLineOfFireActor(cell: number, range: number): Hero | Enemy | null {
+    let best: Hero | Enemy | null = null;
+    let bestDistance = Number.POSITIVE_INFINITY;
+    for (const actor of [this.hero, ...this.enemyList]) {
+      const distance = this.trueDistance(cell, actor.pos);
+      if (distance > range) continue;
+      const path = lineOfFire(cell, actor.pos, this.grid, {
+        blocksCell: (candidate) =>
+          candidate !== actor.pos &&
+          (this.enemyAt(candidate) !== null || candidate === this.hero.pos || !this.isCellTransparent(candidate)),
+      });
+      if (path.at(-1) !== actor.pos) continue;
+      if (distance < bestDistance || (distance === bestDistance && actor === this.hero)) {
+        best = actor;
+        bestDistance = distance;
+      }
+    }
+    return best;
+  }
+
+  private activateAlarmTrap(cell: number): void {
+    for (const enemy of this.enemyList) {
+      enemy.state = "hunt";
+      enemy.lastKnownHeroPos = cell;
+      enemy.wanderTarget = null;
+    }
+    if (this.fov.visible.has(cell)) this.pushLog(warningLog("The alarm trap echoes through the dungeon!"));
+  }
+
+  private activateSummoningTrap(cell: number): void {
+    let count = 1;
+    if (this.trapRng.nextInt(2) === 0) {
+      count++;
+      if (this.trapRng.nextInt(2) === 0) count++;
+    }
+    const candidates = this.neighbourhood8(cell)
+      .filter((candidate) => this.canSpawnAt(candidate));
+    this.trapRng.shuffle(candidates);
+    for (let i = 0; i < count; i++) {
+      const spawnCell = candidates.pop();
+      if (spawnCell === undefined) break;
+      this.spawnEnemyAt(spawnCell);
+      this.pressCell(spawnCell, false, this.enemyAt(spawnCell)!);
+    }
+  }
+
+  private activateTeleportationTrap(cell: number): void {
+    for (const actor of this.actorsInCells(this.neighbourhood9(cell))) {
+      this.teleportActorRandomly(actor);
+    }
+    for (const itemCell of this.neighbourhood9(cell)) {
+      this.teleportGroundItem(itemCell);
+    }
+  }
+
+  private activateGatewayTrap(trap: GeneratedTrapMetadata): void {
+    if (trap.gatewayTargetCell === undefined) {
+      for (const actor of this.actorsInCells(this.neighbourhood9(trap.cell))) {
+        if (this.teleportActorRandomly(actor)) {
+          trap.gatewayTargetCell = actor.pos;
+          break;
+        }
+      }
+      if (trap.gatewayTargetCell === undefined) {
+        for (const itemCell of this.neighbourhood9(trap.cell)) {
+          const target = this.teleportGroundItem(itemCell);
+          if (target !== null) {
+            trap.gatewayTargetCell = target;
+            break;
+          }
+        }
+      }
+    }
+
+    if (trap.gatewayTargetCell === undefined) return;
+    const destinations = [trap.gatewayTargetCell, ...this.neighbourhood8(trap.gatewayTargetCell)]
+      .filter((candidate) => this.canTeleportTo(candidate));
+    this.trapRng.shuffle(destinations);
+    for (const actor of this.actorsInCells(this.neighbourhood9(trap.cell))) {
+      const destination = destinations.shift();
+      if (destination === undefined) break;
+      this.moveActorTo(actor, destination);
+    }
+  }
+
+  private activateHazardTrap(kind: NonNullable<WorldTimedEffect["kind"]>, cell: number, turns: number): void {
+    const cells = this.neighbourhood9(cell).filter((candidate) => !this.grid.isSolid(candidate));
+    const effect: WorldTimedEffect = {
+      id: `trap:${kind}:${cell}:${this.trapRng.nextUint32()}`,
+      kind,
+      cells,
+      turns,
+      source: trapEffectSource(kind),
+    };
+    if (kind === "electricity") effect.damagePerTurn = 1 + Math.floor(this.depth / 2);
+    if (kind === "toxicGas") effect.damagePerTurn = 1;
+    if (kind === "freezing") {
+      effect.stat = "speed";
+      effect.amount = -0.5;
+    }
+    if (kind === "confusionGas") {
+      effect.stat = "accuracy";
+      effect.amount = -3;
+    }
+    this.worldEffects.push(effect);
+    this.applyWorldEffect(effect);
+  }
+
+  private activateOozeTrap(cell: number): void {
+    for (const actor of this.actorsInCells(this.neighbourhood9(cell))) {
+      this.applyTimedModifier(actor, "trap:ooze:speed", "speed", -0.25, 6);
+      this.applyTimedModifier(actor, "trap:ooze:evasion", "evasion", -2, 6);
+    }
+  }
+
+  private activateFlockTrap(cell: number, triggeringActor: Hero | Enemy): void {
+    const cells = this.neighbourhood8(cell)
+      .filter((candidate) => this.grid.isWalkable(candidate) && !this.isOccupied(candidate));
+    this.trapRng.shuffle(cells);
+    const blockers = cells.slice(0, Math.min(8, cells.length));
+    if (blockers.length === 0) return;
+    this.worldEffects.push({
+      id: `trap:flock:${cell}:${this.trapRng.nextUint32()}`,
+      kind: "flock",
+      cells: blockers,
+      turns: 5,
+      blocksMovement: true,
+    });
+    for (const blocker of blockers) this.pressCell(blocker, true, triggeringActor);
+  }
+
+  private tickWorldEffects(): void {
+    if (this.worldEffects.length === 0) return;
+    const remaining: WorldTimedEffect[] = [];
+    for (const effect of this.worldEffects) {
+      this.applyWorldEffect(effect);
+      const next = { ...effect, turns: effect.turns - 1 };
+      if (next.turns > 0) remaining.push(next);
+    }
+    this.worldEffects = remaining;
+  }
+
+  private applyWorldEffect(effect: WorldTimedEffect): void {
+    if (!effect.cells || effect.cells.length === 0 || effect.kind === "flock") return;
+    for (const actor of this.actorsInCells(effect.cells)) {
+      if (effect.damagePerTurn && effect.damagePerTurn > 0) {
+        this.damageActor(actor, effect.damagePerTurn, effect.source ?? effect.id);
+      }
+      if (effect.stat && effect.amount) {
+        this.applyTimedModifier(actor, effect.id, effect.stat, effect.amount, 2);
+        if (effect.kind === "confusionGas") {
+          this.applyTimedModifier(actor, `${effect.id}:evasion`, "evasion", effect.amount, 2);
+        }
+      }
+    }
+  }
+
+  private applyTimedModifier(
+    actor: Hero | Enemy,
+    id: string,
+    stat: "speed" | "accuracy" | "evasion",
+    amount: number,
+    turns: number,
+  ): void {
+    actor.stats.removeModifiers(id);
+    actor.stats.addModifier({ id, stat, amount, turns });
+  }
+
+  private damageActor(actor: Hero | Enemy, amount: number, source: string): void {
+    if (amount <= 0) return;
+    const dealt = actor.stats.takeDamage(amount);
+    if (actor === this.hero) {
+      if (dealt > 0) {
+        this.pushLog(negativeLog(`The ${source} hits you for ${dealt}.`));
+        this.onHeroDamaged?.({ amount: dealt, source, hp: this.hero.stats.hp });
+      }
+      if (!this.hero.stats.alive) {
+        this.heroDead = true;
+        this.deathReason = `Killed by a ${source}.`;
+        this.pushLog(negativeLog(`You have died on depth ${this.depth}.`));
+      }
+      return;
+    }
+    if (actor instanceof Enemy && !actor.stats.alive) {
+      this.onActorDeath?.({ actorId: this.enemyId(actor), cell: actor.pos, name: actor.name });
+      this.removeEnemy(actor);
+    }
+  }
+
+  private actorAt(cell: number): Hero | Enemy | null {
+    if (this.hero.pos === cell) return this.hero;
+    return this.enemyAt(cell);
+  }
+
+  private actorsInCells(cells: readonly number[]): Array<Hero | Enemy> {
+    const wanted = new Set(cells);
+    return [this.hero, ...this.enemyList].filter((actor) => wanted.has(actor.pos));
+  }
+
+  private spawnEnemyAt(cell: number): Enemy | null {
+    if (!this.canSpawnAt(cell)) return null;
+    const def = this.content.randomEnemyForDepth(this.depth, this.trapRng);
+    const enemy = new Enemy(cell, def, this.makeSenses());
+    this.enemyList.push(enemy);
+    this.queue.add(enemy);
+    return enemy;
+  }
+
+  private canSpawnAt(cell: number): boolean {
+    return this.grid.inBoundsCell(cell) &&
+      this.grid.isWalkable(cell) &&
+      !this.isOccupied(cell) &&
+      this.level.itemAt(cell) === null;
+  }
+
+  private teleportActorRandomly(actor: Hero | Enemy): boolean {
+    const destination = this.randomRespawnCell(actor);
+    if (destination === null) return false;
+    this.moveActorTo(actor, destination);
+    if (actor instanceof Enemy && actor.state === "hunt") {
+      actor.state = "wander";
+      actor.lastKnownHeroPos = null;
+      actor.wanderTarget = null;
+    }
+    return true;
+  }
+
+  private teleportGroundItem(cell: number): number | null {
+    const item = this.level.itemAt(cell);
+    if (!item) return null;
+    const destination = this.randomRespawnCell(null);
+    if (destination === null) return null;
+    const removed = this.level.takeGroundItem(cell);
+    if (removed === null) return null;
+    if (!this.level.placeGroundItem(destination, removed)) {
+      this.level.placeGroundItem(cell, removed);
+      return null;
+    }
+    return destination;
+  }
+
+  private randomRespawnCell(actor: Hero | Enemy | null): number | null {
+    const candidates: number[] = [];
+    for (let cell = 0; cell < this.grid.length; cell++) {
+      if (this.canTeleportTo(cell, actor)) candidates.push(cell);
+    }
+    if (candidates.length === 0) return null;
+    return this.trapRng.pick(candidates);
+  }
+
+  private canTeleportTo(cell: number, actor: Hero | Enemy | null = null): boolean {
+    if (!this.grid.inBoundsCell(cell) || !this.grid.isWalkable(cell)) return false;
+    const terrain = this.grid.get(cell);
+    if (terrain === Terrain.TRAP || terrain === Terrain.SECRET_TRAP) return false;
+    if (cell === this.level.entrance || cell === this.level.exit) return false;
+    if (this.level.itemAt(cell) !== null) return false;
+    if (this.hero.pos === cell && actor !== this.hero) return false;
+    return this.enemyList.every((enemy) => enemy === actor || enemy.pos !== cell);
+  }
+
+  private moveActorTo(actor: Hero | Enemy, cell: number): void {
+    actor.pos = cell;
+  }
+
+  private neighbourhood8(cell: number): number[] {
+    return this.grid.neighbours8(cell);
+  }
+
+  private neighbourhood9(cell: number): number[] {
+    return [cell, ...this.grid.neighbours8(cell)];
+  }
+
+  private trueDistance(a: number, b: number): number {
+    const dx = this.grid.xOf(a) - this.grid.xOf(b);
+    const dy = this.grid.yOf(a) - this.grid.yOf(b);
+    return Math.sqrt(dx * dx + dy * dy);
   }
 
   private actorCell(actor: unknown): number | null {
@@ -869,8 +1291,13 @@ export class GameWorld {
       }),
       combatRngState: this.combatRng.state,
       enemyAiRngState: this.enemyAiRng.state,
+      trapRngState: this.trapRng.state,
       heroDead: this.heroDead,
       log: this.logLines.slice(),
+      worldEffects: this.worldEffects.map((effect) => ({
+        ...effect,
+        cells: effect.cells ? [...effect.cells] : undefined,
+      })),
     };
   }
 
@@ -881,6 +1308,8 @@ export class GameWorld {
       lootConfigForContent(this.content),
     );
     this.combatRng.state = snapshot.combatRngState;
+    this.trapRng = new RNG(`${snapshot.seed}:trap-runtime`);
+    if (snapshot.trapRngState !== undefined) this.trapRng.state = snapshot.trapRngState;
     this.enemyAiRng = new RNG((this.dungeon.current.seed ^ 0x85ebca6b) >>> 0);
     this.enemyAiRng.state = snapshot.enemyAiRngState;
 
@@ -923,6 +1352,10 @@ export class GameWorld {
 
     this.heroDead = snapshot.heroDead;
     this.logLines.splice(0, this.logLines.length, ...snapshot.log.slice(-MAX_LOG));
+    this.worldEffects = (snapshot.worldEffects ?? []).map((effect) => ({
+      ...effect,
+      cells: effect.cells ? [...effect.cells] : undefined,
+    }));
     this.fov.bindMemory(this.level.explored);
     this.recomputeFOV();
   }
@@ -943,4 +1376,19 @@ function lootConfigForContent(content: ContentDatabaseType): DungeonLootConfig {
     itemDefs: content.allItems,
     strengthPotionId: hasStrengthPotion ? "potion_strength" : null,
   };
+}
+
+function normalIntRange(rng: RNG, min: number, max: number): number {
+  if (max <= min) return min;
+  return min + Math.floor((rng.next() + rng.next()) * (max - min + 1) / 2);
+}
+
+function trapEffectSource(kind: NonNullable<WorldTimedEffect["kind"]>): string {
+  switch (kind) {
+    case "freezing": return "chilling trap";
+    case "electricity": return "shocking trap";
+    case "toxicGas": return "toxic trap";
+    case "confusionGas": return "confusion trap";
+    case "flock": return "flock trap";
+  }
 }

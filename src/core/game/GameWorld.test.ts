@@ -339,6 +339,182 @@ describe("GameWorld", () => {
     expect(heroTurn?.time).toBeCloseTo(0.5);
   });
 
+  it("intentional search reveals adjacent hidden doors and traps", () => {
+    const w = makeWorld("WORLD-SEARCH-FOUND", { enemyCount: 0 });
+    const [doorCell, trapCell] = w.grid.neighbours4(w.heroPos);
+    expect(doorCell).toBeDefined();
+    expect(trapCell).toBeDefined();
+
+    w.grid.set(doorCell!, Terrain.SECRET_DOOR);
+    w.grid.set(trapCell!, Terrain.SECRET_TRAP);
+    w.level.trapMetadata.push({
+      cell: trapCell!,
+      kind: "wornDart",
+      visible: false,
+      active: true,
+    });
+    w.heroStats.addModifier({ id: "haste-test", stat: "speed", amount: 1 });
+    w.recomputeFOV();
+
+    expect(w.search()).toBe(true);
+
+    expect(w.grid.get(doorCell!)).toBe(Terrain.DOOR);
+    expect(w.grid.get(trapCell!)).toBe(Terrain.TRAP);
+    expect(w.level.trapMetadata.find((trap) => trap.cell === trapCell)?.visible).toBe(true);
+    expect(w.log.at(-1)).toBe("** You noticed something.");
+    const heroTurn = w.snapshot().queue.actors.find((actor) => actor.id === "hero");
+    expect(heroTurn?.time).toBeCloseTo(0.5);
+  });
+
+  it("intentional search spends a turn even when nothing is found", () => {
+    const w = makeWorld("WORLD-SEARCH-EMPTY", { enemyCount: 0 });
+    const heroX = w.grid.xOf(w.heroPos);
+    const heroY = w.grid.yOf(w.heroPos);
+    for (let y = heroY - 1; y <= heroY + 1; y++) {
+      for (let x = heroX - 1; x <= heroX + 1; x++) {
+        if (w.grid.inBounds(x, y)) w.grid.set(w.grid.cell(x, y), Terrain.FLOOR);
+      }
+    }
+    w.heroStats.addModifier({ id: "haste-test", stat: "speed", amount: 1 });
+    w.recomputeFOV();
+
+    expect(w.search()).toBe(true);
+
+    expect(w.log).not.toContain("** You noticed something.");
+    const heroTurn = w.snapshot().queue.actors.find((actor) => actor.id === "hero");
+    expect(heroTurn?.time).toBeCloseTo(0.5);
+  });
+
+  it("hero hard-press triggers hidden traps while search only reveals them", () => {
+    const triggered: string[] = [];
+    const w = makeWorld("WORLD-HIDDEN-TRAP", {
+      enemyCount: 0,
+      onTrapTriggered: (info) => triggered.push(info.kind),
+    });
+    const target = w.grid.neighbours4(w.heroPos).find((cell) => w.grid.isWalkable(cell));
+    expect(target).toBeDefined();
+    w.grid.set(target!, Terrain.SECRET_TRAP);
+    w.level.trapMetadata.push({
+      cell: target!,
+      kind: "alarm",
+      visible: false,
+      active: true,
+    });
+
+    const dx = w.grid.xOf(target!) - w.grid.xOf(w.heroPos);
+    const dy = w.grid.yOf(target!) - w.grid.yOf(w.heroPos);
+    expect(w.tryMoveHero(dx, dy)).toBe(true);
+
+    const trap = w.level.trapMetadata.find((candidate) => candidate.cell === target);
+    expect(triggered).toEqual(["alarm"]);
+    expect(trap?.active).toBe(false);
+    expect(trap?.visible).toBe(true);
+    expect(w.grid.get(target!)).toBe(Terrain.INACTIVE_TRAP);
+    expect(w.log.some((line) => line.includes("hidden alarm trap"))).toBe(true);
+  });
+
+  it("soft-pressing a hidden trap does not trigger it", () => {
+    const w = makeWorld("WORLD-SOFT-HIDDEN-TRAP", { enemyCount: 1 });
+    const cell = w.heroPos;
+    w.grid.set(cell, Terrain.SECRET_TRAP);
+    w.level.trapMetadata.push({ cell, kind: "alarm", visible: false, active: true });
+
+    pressCellForTest(w, cell, false, w.enemies[0] ?? {});
+
+    expect(w.level.trapMetadata.at(-1)?.active).toBe(true);
+    expect(w.grid.get(cell)).toBe(Terrain.SECRET_TRAP);
+  });
+
+  it("worn dart traps damage the actor on the trap cell", () => {
+    const w = makeWorld("WORLD-WORN-DART", { enemyCount: 0 });
+    const before = w.heroStats.hp;
+
+    triggerTrapForTest(w, "wornDart");
+
+    expect(w.heroStats.hp).toBeLessThan(before);
+    expect(w.grid.get(w.level.trapMetadata.at(-1)!.cell)).toBe(Terrain.INACTIVE_TRAP);
+  });
+
+  it("alarm traps beckon every enemy toward the trap cell", () => {
+    const w = makeWorld("WORLD-ALARM", { enemyCount: 2 });
+    expect(w.enemies.length).toBeGreaterThan(0);
+    const cell = w.heroPos;
+
+    triggerTrapForTest(w, "alarm");
+
+    for (const enemy of w.enemies) {
+      expect(enemy.state).toBe("hunt");
+      expect(enemy.lastKnownHeroPos).toBe(cell);
+    }
+  });
+
+  it("summoning traps spawn deterministic depth-valid enemies nearby", () => {
+    const w = makeWorld("WORLD-SUMMONING", { enemyCount: 0 });
+    const before = w.enemies.length;
+
+    triggerTrapForTest(w, "summoning");
+
+    expect(w.enemies.length).toBeGreaterThan(before);
+    expect(w.enemies.length).toBeLessThanOrEqual(before + 3);
+  });
+
+  it("teleportation traps move the hero to a valid destination", () => {
+    const w = makeWorld("WORLD-TELEPORTATION", { enemyCount: 0 });
+    const before = w.heroPos;
+
+    triggerTrapForTest(w, "teleportation");
+
+    expect(w.heroPos).not.toBe(before);
+    expect(w.grid.isWalkable(w.heroPos)).toBe(true);
+  });
+
+  it("gateway traps stay active and persist their destination through save/load", () => {
+    const w = makeWorld("WORLD-GATEWAY", { enemyCount: 0 });
+
+    triggerTrapForTest(w, "gateway");
+
+    const trap = w.level.trapMetadata.at(-1)!;
+    expect(trap.active).toBe(true);
+    expect(trap.gatewayTargetCell).toBeDefined();
+    expect(w.grid.get(trap.cell)).toBe(Terrain.TRAP);
+
+    const loaded = GameWorld.fromSnapshot(w.snapshot(), content);
+    const loadedTrap = loaded.level.trapMetadata.find((candidate) => candidate.cell === trap.cell);
+    expect(loadedTrap?.active).toBe(true);
+    expect(loadedTrap?.gatewayTargetCell).toBe(trap.gatewayTargetCell);
+  });
+
+  it.each([
+    ["chilling", "freezing"],
+    ["shocking", "electricity"],
+    ["toxic", "toxicGas"],
+    ["confusion", "confusionGas"],
+  ] as const)("creates a serializable %s trap hazard", (kind, hazard) => {
+    const w = makeWorld(`WORLD-${kind}`, { enemyCount: 0 });
+
+    triggerTrapForTest(w, kind);
+
+    expect(w.snapshot().worldEffects?.some((effect) => effect.kind === hazard)).toBe(true);
+  });
+
+  it("ooze traps apply timed ooze modifiers", () => {
+    const w = makeWorld("WORLD-OOZE", { enemyCount: 0 });
+
+    triggerTrapForTest(w, "ooze");
+
+    expect(w.heroStats.activeModifiers().some((modifier) => modifier.id.startsWith("trap:ooze"))).toBe(true);
+  });
+
+  it("flock traps create temporary blocking cells", () => {
+    const w = makeWorld("WORLD-FLOCK", { enemyCount: 0 });
+
+    triggerTrapForTest(w, "flock");
+
+    const flock = w.snapshot().worldEffects?.find((effect) => effect.kind === "flock");
+    expect(flock?.blocksMovement).toBe(true);
+    expect(flock?.cells?.length).toBeGreaterThan(0);
+  });
+
   it("bump-attacks spend weapon attack delay scaled by current hero speed", () => {
     const base = new GameWorld("WORLD-ATTACK-DELAY", contentWithFastWeapon, {
       enemyCount: 1,
@@ -592,3 +768,26 @@ describe("GameWorld", () => {
     expect(totalDealt).toBe(maxHp - w.heroStats.hp);
   });
 });
+
+type TestPressWorld = {
+  pressCell(cell: number, hard: boolean, actor: object): void;
+};
+
+function triggerTrapForTest(w: GameWorld, kind: string): void {
+  const center = w.heroPos;
+  for (const cell of [center, ...w.grid.neighbours8(center)]) {
+    w.grid.set(cell, Terrain.FLOOR);
+  }
+  w.grid.set(center, Terrain.TRAP);
+  w.level.trapMetadata.push({
+    cell: center,
+    kind,
+    visible: true,
+    active: true,
+  });
+  pressCellForTest(w, center, true, {});
+}
+
+function pressCellForTest(w: GameWorld, cell: number, hard: boolean, actor: object): void {
+  (w as unknown as TestPressWorld).pressCell(cell, hard, actor);
+}

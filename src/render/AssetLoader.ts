@@ -249,10 +249,11 @@ export class AssetLoader implements SpriteSheetAssets {
       terrain === Terrain.REGION_DECO ||
       terrain === Terrain.REGION_DECO_ALT ||
       terrain === Terrain.TRAP ||
-      terrain === Terrain.SECRET_TRAP
+      terrain === Terrain.INACTIVE_TRAP
     ) return "grass";
+    if (terrain === Terrain.SECRET_TRAP) return "floor";
     if (terrain === Terrain.WATER) return "water";
-    if (terrain === Terrain.DOOR || terrain === Terrain.SECRET_DOOR || terrain === Terrain.LOCKED_EXIT) return "doorFlat";
+    if (terrain === Terrain.DOOR || terrain === Terrain.LOCKED_EXIT) return "doorFlat";
     return "wallTop";
   }
 

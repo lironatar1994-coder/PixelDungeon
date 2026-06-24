@@ -8,6 +8,7 @@ import type { RNG } from "@/core/rng/Mulberry32";
 import type { LootGenerationOptions, GeneratedGroundItem, GeneratedLevel } from "@/core/procgen/LevelGenerator";
 import type { BuiltRegularLevel, GeneratedRoomMetadata, GeneratedTrapMetadata, RegularLevelPlan } from "./types";
 import { RegularRoom, doorCandidates, intersectRooms, normalIntRange, type Point, type RegularDoor } from "./rooms";
+import { hydrateTrap, trapDefinition, weightedTrapKind } from "@/core/traps/registry";
 
 export interface RegularPainterRngs {
   terrain: RNG;
@@ -524,6 +525,7 @@ function placeTraps(
   rng: RNG,
   protectedCells: Set<number>,
 ): GeneratedTrapMetadata[] {
+  if (plan.painter.trapCount <= 0 || plan.painter.trapKinds.length === 0) return [];
   const valid: number[] = [];
   for (const room of rooms) {
     for (const p of room.getPoints()) {
@@ -531,18 +533,37 @@ function placeTraps(
       if (!protectedCells.has(cell) && grid.get(cell) === Terrain.FLOOR && room.canPlaceTrap(p)) valid.push(cell);
     }
   }
-  rng.shuffle(valid);
-  const count = Math.min(plan.painter.trapCount, Math.floor(valid.length / 5));
+  const validNonHallways = valid.filter((cell) => {
+    const north = cell - grid.width;
+    const south = cell + grid.width;
+    const east = cell + 1;
+    const west = cell - 1;
+    return (
+      (grid.inBoundsCell(north) && grid.isWalkable(north) || grid.inBoundsCell(south) && grid.isWalkable(south)) &&
+      (grid.inBoundsCell(east) && grid.isWalkable(east) || grid.inBoundsCell(west) && grid.isWalkable(west))
+    );
+  });
+  const baseCount = Math.min(plan.painter.trapCount, Math.floor(valid.length / 5));
+  const totalCount = plan.feeling === "traps" ? baseCount * 5 : baseCount;
   const traps: GeneratedTrapMetadata[] = [];
-  for (let i = 0; i < count; i++) {
-    const cell = valid.pop();
-    if (cell === undefined) break;
-    const visible = false;
+  for (let i = 0; i < totalCount && valid.length > 0; i++) {
+    const kind = weightedTrapKind(plan.painter.trapKinds, plan.painter.trapChances, rng);
+    const definition = trapDefinition(kind);
+    const pool = definition.avoidsHallways && validNonHallways.length > 0 ? validNonHallways : valid;
+    const cell = rng.pick(pool);
+    removeCell(valid, cell);
+    removeCell(validNonHallways, cell);
+    const visible = i >= baseCount || !definition.canBeHidden;
     grid.set(cell, visible ? Terrain.TRAP : Terrain.SECRET_TRAP);
     protectedCells.add(cell);
-    traps.push({ cell, kind: rng.pick(plan.painter.trapKinds), visible, active: true });
+    traps.push(hydrateTrap({ cell, kind, visible, active: true }));
   }
   return traps;
+}
+
+function removeCell(cells: number[], cell: number): void {
+  const index = cells.indexOf(cell);
+  if (index >= 0) cells.splice(index, 1);
 }
 
 function decorateSewer(grid: Grid, variants: Map<number, number>, rng: RNG): void {

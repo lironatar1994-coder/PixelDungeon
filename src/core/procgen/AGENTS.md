@@ -19,6 +19,7 @@ Antigravity AI
 - Decorative water, grass, and room patterns must not overwrite doors, stairs, trap cells, required loot, or block the generated room graph.
 - Angle-placed rooms must reject padded collisions against non-connected rooms and keep the SPD branch-angle bias toward loop centers.
 - Keep generation RNG streams scoped for builder, terrain paint, stair placement, traps, and loot so painter density changes do not move loot, traps, or stairs.
+- Sewer trap placement must use the shared trap registry: depth 1 visible WornDart only, depths 2-4 weighted sewer pool, one trap per five valid cells, hallway avoidance where requested, and 5x visible extras on `traps` feeling floors.
 
 # Verification
 - Run focused procgen tests with `npm test -- src/core/procgen`.

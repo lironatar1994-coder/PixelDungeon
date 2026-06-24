@@ -9,7 +9,37 @@ export interface MainMenuActions {
 
 type MenuView = "title" | "heroes" | "history" | "about";
 
+const GAME_ICON_URL = `${import.meta.env.BASE_URL}assets/icon_game.png`;
+
 const VERSION_LABEL = "v0.1 · Codex Build";
+
+/** Number of hero buttons shown in the select dock. Slots past the available
+ *  heroes render as locked "Soon" placeholders. */
+const HERO_SLOTS = 4;
+/** Pixel scale for the cropped class portrait drawn on each hero button. */
+const HERO_PORTRAIT_SCALE = 4;
+/** Class sprite sheets are 256×128; the portrait crop mirrors AssetLoader. */
+const HERO_SHEET_W = 256;
+const HERO_SHEET_H = 128;
+const HERO_PORTRAIT_RECT = { x: 1, y: 0, w: 12, h: 15 } as const;
+/** Full-screen backdrop art per hero id. Heroes without an entry fall back to
+ *  the plain dark dungeon backdrop. Pure presentation — no engine state. */
+const HERO_BG_URLS: Record<string, string> = {
+  warrior: `${import.meta.env.BASE_URL}assets/warrior_full_bg.png`,
+};
+
+/** Inline style that crops a class portrait out of its 256×128 sprite sheet. */
+function heroPortraitStyle(sprite: string, scale: number): string {
+  const url = `${import.meta.env.BASE_URL}assets/${sprite}.png`;
+  const r = HERO_PORTRAIT_RECT;
+  return [
+    `background-image:url("${url}")`,
+    `background-size:${HERO_SHEET_W * scale}px ${HERO_SHEET_H * scale}px`,
+    `background-position:-${r.x * scale}px -${r.y * scale}px`,
+    `width:${r.w * scale}px`,
+    `height:${r.h * scale}px`,
+  ].join(";");
+}
 
 /**
  * MainMenu — the title screen (DOM only; reads no live game state).
@@ -30,6 +60,12 @@ export class MainMenu {
   private readonly canContinue: boolean;
   private statusEl: HTMLParagraphElement | null = null;
   private statusTimer = 0;
+  private selectedHeroId: string | null = null;
+  private heroBgEl: HTMLDivElement | null = null;
+  private heroNameEl: HTMLHeadingElement | null = null;
+  private heroStatsEl: HTMLParagraphElement | null = null;
+  private heroBlurbEl: HTMLParagraphElement | null = null;
+  private readonly heroPicks = new Map<string, HTMLButtonElement>();
 
   constructor(
     canContinue: boolean,
@@ -54,13 +90,18 @@ export class MainMenu {
     this.scene = document.createElement("div");
     this.scene.className = "mm-scene";
 
+    const heroSelect = this.buildHeroPanel();
     this.views.set("title", this.buildTitleView());
-    this.views.set("heroes", this.buildHeroPanel());
+    this.views.set("heroes", heroSelect);
     this.views.set("history", this.buildHistoryPanel());
     this.views.set("about", this.buildAboutPanel());
-    for (const view of this.views.values()) this.scene.append(view);
+    // The hero-select is full-bleed, so it lives in the root's stacking context
+    // (a sibling of the scene/footer) instead of inside the centered scene.
+    for (const [key, view] of this.views) {
+      if (key !== "heroes") this.scene.append(view);
+    }
 
-    this.root.append(this.scene, this.buildFooter());
+    this.root.append(this.scene, heroSelect, this.buildFooter());
     document.body.append(this.root);
     this.show("title");
   }
@@ -82,12 +123,12 @@ export class MainMenu {
 
     const logo = document.createElement("div");
     logo.className = "mm-logo";
-    logo.setAttribute("aria-label", "Dungeon Pixel — Swords and Magic");
+    logo.setAttribute("aria-label", "Blood and Steel");
     logo.innerHTML = `
       <span class="mm-logo-glow" aria-hidden="true"></span>
-      <span class="mm-logo-line">DUNGEON</span>
-      <span class="mm-logo-line">PIXEL</span>
-      <span class="mm-logo-sub">Swords &amp; Magic</span>
+      <img class="mm-game-icon" src="${GAME_ICON_URL}" alt="" aria-hidden="true" />
+      <span class="mm-logo-title"><span class="mm-logo-blood">Blood</span> <span class="mm-logo-and">and</span> <span class="mm-logo-steel">Steel</span></span>
+      <span class="mm-logo-sub">iron - blood - cold stone</span>
     `;
 
     const nav = document.createElement("nav");
@@ -125,29 +166,115 @@ export class MainMenu {
   }
 
   // --- hero select ---------------------------------------------------------
+  // A full-bleed picker: the selected hero's art fills the screen, four hero
+  // buttons sit in a dock at the bottom, and "Enter the Dungeon" embarks with
+  // whoever is selected. Selecting only swaps the backdrop/preview; the run
+  // starts on embark (UI expresses intent only — Pillar 1).
   private buildHeroPanel(): HTMLElement {
-    const panel = this.window("Choose Your Hero", "Each class begins the descent differently.");
+    const view = document.createElement("section");
+    view.className = "mm-heroselect";
+    view.setAttribute("aria-label", "Choose your hero");
 
-    const list = document.createElement("div");
-    list.className = "mm-hero-list";
-    for (const hero of this.heroes) {
-      const card = document.createElement("button");
-      card.type = "button";
-      card.className = "mm-hero-card";
-      card.innerHTML = `
-        <span class="mm-hero-portrait" aria-hidden="true"></span>
-        <span class="mm-hero-copy">
-          <strong>${escapeText(hero.name)}</strong>
-          <span class="mm-hero-stats">HP ${hero.maxHealth} · STR ${hero.strength}</span>
-          <small>${escapeText(hero.description || `Starts with ${hero.startingItems.join(", ")}`)}</small>
-        </span>
-        <span class="mm-hero-go" aria-hidden="true">▶</span>
-      `;
-      card.addEventListener("click", () => this.actions.newGame(hero.id));
-      list.append(card);
+    const bg = document.createElement("div");
+    bg.className = "mm-hero-bg";
+    bg.setAttribute("aria-hidden", "true");
+    this.heroBgEl = bg;
+
+    const scrim = document.createElement("div");
+    scrim.className = "mm-hero-scrim";
+    scrim.setAttribute("aria-hidden", "true");
+
+    const top = document.createElement("div");
+    top.className = "mm-hero-top";
+    const back = this.button("Back", "tile", () => this.show("title"));
+    back.classList.add("mm-back", "mm-hero-backbtn");
+    const heading = document.createElement("div");
+    heading.className = "mm-hero-heading";
+    this.heroNameEl = document.createElement("h2");
+    this.heroStatsEl = document.createElement("p");
+    this.heroStatsEl.className = "mm-hero-statline";
+    heading.append(this.heroNameEl, this.heroStatsEl);
+    top.append(back, heading);
+
+    const foot = document.createElement("div");
+    foot.className = "mm-hero-foot";
+    this.heroBlurbEl = document.createElement("p");
+    this.heroBlurbEl.className = "mm-hero-blurb";
+    const embark = this.button("Enter the Dungeon", "primary", () => {
+      if (this.selectedHeroId) this.actions.newGame(this.selectedHeroId);
+    });
+    embark.classList.add("mm-hero-embark");
+
+    const dock = document.createElement("div");
+    dock.className = "mm-hero-dock";
+    for (let slot = 0; slot < HERO_SLOTS; slot++) {
+      const hero = this.heroes[slot];
+      dock.append(hero ? this.buildHeroPick(hero) : this.buildLockedPick());
     }
-    panel.append(list);
-    return panel;
+
+    foot.append(this.heroBlurbEl, embark, dock);
+    view.append(bg, scrim, top, foot);
+
+    if (this.heroes[0]) this.selectHero(this.heroes[0]);
+    return view;
+  }
+
+  private buildHeroPick(hero: HeroDef): HTMLButtonElement {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "mm-hero-pick";
+    button.dataset.hero = hero.id;
+    button.setAttribute("aria-label", hero.name);
+
+    const portrait = document.createElement("span");
+    portrait.className = "mm-hero-pick-portrait";
+    portrait.setAttribute("aria-hidden", "true");
+    portrait.setAttribute("style", heroPortraitStyle(hero.sprite, HERO_PORTRAIT_SCALE));
+
+    const label = document.createElement("span");
+    label.className = "mm-hero-pick-label";
+    label.textContent = hero.name;
+
+    button.append(portrait, label);
+    button.addEventListener("click", () => this.selectHero(hero));
+    this.heroPicks.set(hero.id, button);
+    return button;
+  }
+
+  private buildLockedPick(): HTMLButtonElement {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "mm-hero-pick mm-hero-pick-locked";
+    button.disabled = true;
+    button.setAttribute("aria-label", "Locked hero");
+    button.innerHTML = `
+      <span class="mm-hero-pick-portrait mm-hero-pick-q" aria-hidden="true">?</span>
+      <span class="mm-hero-pick-label">Soon</span>
+    `;
+    return button;
+  }
+
+  private selectHero(hero: HeroDef): void {
+    this.selectedHeroId = hero.id;
+
+    const bgUrl = HERO_BG_URLS[hero.id];
+    if (this.heroBgEl) {
+      this.heroBgEl.style.backgroundImage = bgUrl ? `url("${bgUrl}")` : "";
+      this.heroBgEl.classList.toggle("is-empty", !bgUrl);
+    }
+    if (this.heroNameEl) this.heroNameEl.textContent = hero.name;
+    if (this.heroStatsEl) {
+      this.heroStatsEl.textContent = `HP ${hero.maxHealth} · STR ${hero.strength}`;
+    }
+    if (this.heroBlurbEl) {
+      this.heroBlurbEl.textContent =
+        hero.description || `Starts with ${hero.startingItems.join(", ")}`;
+    }
+    for (const [id, pick] of this.heroPicks) {
+      const selected = id === hero.id;
+      pick.classList.toggle("is-selected", selected);
+      pick.setAttribute("aria-pressed", String(selected));
+    }
   }
 
   // --- run history ---------------------------------------------------------

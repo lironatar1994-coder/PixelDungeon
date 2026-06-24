@@ -1,0 +1,16 @@
+{
+  "name": "Blood and Steel",
+  "short_name": "Blood & Steel",
+  "start_url": ".",
+  "display": "fullscreen",
+  "background_color": "#08090b",
+  "theme_color": "#08090b",
+  "icons": [
+    {
+      "src": "assets/icon_game.png",
+      "sizes": "2048x2048",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

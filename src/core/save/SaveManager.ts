@@ -35,7 +35,7 @@ export class SaveManager {
 
   load(
     content: ContentDatabase,
-    opts: Pick<WorldOptions, "onChange" | "onLog" | "onHeroDamaged" | "onCombatStrike" | "onActorMove"> = {},
+    opts: Pick<WorldOptions, "onChange" | "onLog" | "onHeroDamaged" | "onCombatStrike" | "onActorMove" | "onActorDeath" | "onItemPickup" | "onHeroLevelUp" | "onTrapTriggered"> = {},
   ): GameWorld | null {
     const raw = this.storage.getItem(this.key);
     if (!raw) return null;
@@ -80,7 +80,7 @@ export class SaveManager {
   static parse(
     raw: string,
     content: ContentDatabase,
-    opts: Pick<WorldOptions, "onChange" | "onLog" | "onHeroDamaged" | "onCombatStrike" | "onActorMove"> = {},
+    opts: Pick<WorldOptions, "onChange" | "onLog" | "onHeroDamaged" | "onCombatStrike" | "onActorMove" | "onActorDeath" | "onItemPickup" | "onHeroLevelUp" | "onTrapTriggered"> = {},
   ): GameWorld {
     const snapshot = JSON.parse(raw) as GameWorldSnapshot;
     if (snapshot.version !== SAVE_VERSION) {

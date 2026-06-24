@@ -200,6 +200,8 @@ export class GameOverlay {
     const expPct = state.hero.maxExperience > 0
       ? Math.max(0, Math.min(1, state.hero.experience / state.hero.maxExperience))
       : 0;
+    this.hud.classList.toggle("hud-low-health", hpPct < 0.334 && state.hero.alive);
+    this.hud.classList.toggle("hud-dead", !state.hero.alive);
     this.hud.replaceChildren();
 
     const level = document.createElement("div");
@@ -221,22 +223,9 @@ export class GameOverlay {
     const vitals = document.createElement("div");
     vitals.className = "hud-vitals";
 
-    const topRow = document.createElement("div");
-    topRow.className = "hud-top-row";
-    const depth = document.createElement("div");
-    depth.className = "depth-pill";
-    depth.textContent = String(state.depth);
-    topRow.append(depth);
-
-    const inSight = state.enemiesInSight.length;
-    if (inSight > 0) {
-      const hunting = state.enemiesInSight.filter((e) => e.state === "hunt").length;
-      const threat = document.createElement("div");
-      threat.className = hunting > 0 ? "threat-chip threat-chip-active" : "threat-chip";
-      threat.textContent = `${inSight} foe${inSight > 1 ? "s" : ""}`;
-      threat.title = `${inSight} in sight${hunting > 0 ? `, ${hunting} hunting you` : ""}`;
-      topRow.append(threat);
-    }
+    const compass = document.createElement("div");
+    compass.className = "hud-compass";
+    compass.textContent = String(state.depth);
 
     const hp = document.createElement("div");
     hp.className = "hp-track";
@@ -254,15 +243,11 @@ export class GameOverlay {
       <span class="exp-text">${state.hero.experience}/${state.hero.maxExperience}</span>
     `;
 
-    vitals.append(topRow, hp, exp);
+    vitals.append(compass, hp, exp);
     this.hud.append(portrait, level, vitals);
   }
 
   private renderActionBar(): void {
-    const left = document.createElement("div");
-    left.className = "action-group action-group-left";
-    left.append(this.actionButton("Wait", "uiWait", () => this.actions.wait()));
-
     const center = document.createElement("div");
     center.className = "action-group action-group-center quickslot-bar";
     this.quickslotGroup = center;
@@ -270,11 +255,12 @@ export class GameOverlay {
     const right = document.createElement("div");
     right.className = "action-group action-group-right";
     right.append(
-      this.actionButton("Look", "uiSearch", () => this.actions.look()),
       this.actionButton("Inventory", "uiInventory", () => this.toggleInventory()),
+      this.actionButton("Look", "uiSearch", () => this.actions.look()),
+      this.actionButton("Wait", "uiWait", () => this.actions.wait()),
     );
 
-    this.actionBar.replaceChildren(left, center, right);
+    this.actionBar.replaceChildren(center, right);
     this.actionBarRendered = true;
     this.quickslotSig = "";
     this.renderQuickslots(this.getState());
@@ -296,13 +282,13 @@ export class GameOverlay {
       if (entry) entry.count += item.quantity ?? 1;
       else grouped.set(item.defId, { item, count: item.quantity ?? 1 });
     }
-    const slots = [...grouped.values()].slice(0, 6);
-    const sig = slots.map((s) => `${s.item.defId}x${s.count}`).join(",");
+    const slotCount = this.visibleQuickslotCount();
+    const slots = [...grouped.values()].slice(0, slotCount);
+    const sig = `${slotCount}|${slots.map((s) => `${s.item.defId}x${s.count}`).join(",")}`;
     if (sig === this.quickslotSig) return;
     this.quickslotSig = sig;
 
     this.quickslotGroup.replaceChildren();
-    const slotCount = 6;
     for (let i = 0; i < slotCount; i++) {
       const slot = slots[i];
       const button = document.createElement("button");
@@ -348,6 +334,16 @@ export class GameOverlay {
       });
       this.quickslotGroup.append(button);
     }
+  }
+
+  private visibleQuickslotCount(): number {
+    const styles = getComputedStyle(document.documentElement);
+    const scale = Number.parseFloat(styles.getPropertyValue("--toolbar-scale")) || 2;
+    const logicalWidth = this.root.clientWidth / scale;
+    let count = 4;
+    if (logicalWidth > 152) count += 1;
+    if (logicalWidth > 170) count += 1;
+    return count;
   }
 
   private renderAttackIndicator(state: OverlayState): void {

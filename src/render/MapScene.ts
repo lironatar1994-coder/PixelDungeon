@@ -19,29 +19,12 @@ const VISIBLE: Record<Terrain, string> = {
   [Terrain.WALL_DECO]: "#465156",
   [Terrain.REGION_DECO]: "#6c7f45",
   [Terrain.REGION_DECO_ALT]: "#52613e",
-  [Terrain.SECRET_DOOR]: "#5f5b4c",
+  [Terrain.SECRET_DOOR]: "#3a3a45",
   [Terrain.TRAP]: "#b85c42",
-  [Terrain.SECRET_TRAP]: "#5b574a",
+  [Terrain.SECRET_TRAP]: "#e9e1c8",
   [Terrain.LOCKED_EXIT]: "#c98a45",
   [Terrain.CHASM]: "#050505",
-};
-
-const EXPLORED: Record<Terrain, string> = {
-  [Terrain.EMPTY]: "#000000",
-  [Terrain.FLOOR]: "#5b574a",
-  [Terrain.WALL]: "#1c1c22",
-  [Terrain.DOOR]: "#5e4524",
-  [Terrain.GRASS]: "#2f4021",
-  [Terrain.WATER]: "#203a49",
-  [Terrain.EMPTY_SP]: "#4f4d42",
-  [Terrain.WALL_DECO]: "#20282a",
-  [Terrain.REGION_DECO]: "#2f4021",
-  [Terrain.REGION_DECO_ALT]: "#27321e",
-  [Terrain.SECRET_DOOR]: "#3a342a",
-  [Terrain.TRAP]: "#5a3027",
-  [Terrain.SECRET_TRAP]: "#3f3c32",
-  [Terrain.LOCKED_EXIT]: "#5e4524",
-  [Terrain.CHASM]: "#000000",
+  [Terrain.INACTIVE_TRAP]: "#8d8872",
 };
 
 const COLORS = {
@@ -56,6 +39,12 @@ const COLORS = {
   gridLine: "rgba(0, 0, 0, 0.18)",
   unseen: "#000000",
 };
+
+const FOG_ALPHA = {
+  visible: 0,
+  visited: 0x99 / 0xff,
+  invisible: 1,
+} as const;
 
 const IDLE_START_DELAY_SECONDS = 1.4;
 const STRIKE_ANIMATION_DURATION_SECONDS = 0.42;
@@ -141,7 +130,6 @@ interface WallOverlayDraw {
   tileIndex: number;
   drawX: number;
   drawY: number;
-  visible: boolean;
 }
 
 const activeStrikes: CombatStrikeAnimation[] = [];
@@ -340,11 +328,7 @@ export function drawMapScene(
       const terrain = grid.get(cell);
       const visible = view.visible.has(cell);
       const explored = view.explored.has(cell);
-      ctx.fillStyle = visible
-        ? VISIBLE[terrain]
-        : explored
-          ? EXPLORED[terrain]
-          : COLORS.unseen;
+      ctx.fillStyle = visible || explored ? VISIBLE[terrain] : COLORS.unseen;
       ctx.fillRect(vp.offsetX + x * ts, vp.offsetY + y * ts, ts, ts);
 
       if (assets && terrain !== Terrain.EMPTY && explored) {
@@ -413,22 +397,18 @@ export function drawMapScene(
           );
         }
         if (!drewTerrain) {
-          ctx.fillStyle = visible ? VISIBLE[terrain] : EXPLORED[terrain];
+          ctx.fillStyle = VISIBLE[terrain];
           ctx.fillRect(drawX, drawY, ts, ts);
         }
 
         if (overhangIndex !== null) {
-          wallOverlays.push({ tileIndex: overhangIndex, drawX, drawY, visible });
+          wallOverlays.push({ tileIndex: overhangIndex, drawX, drawY });
         }
 
         if (isWalkableTerrain(terrain) && terrainAt(grid, x, y - 1) === Terrain.WALL) {
           drawWallCastShadow(ctx, drawX, drawY, ts);
         }
 
-        if (!visible) {
-          ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
-          ctx.fillRect(drawX, drawY, ts, ts);
-        }
       }
     }
   }
@@ -554,6 +534,7 @@ export function drawMapScene(
   for (const actor of actors) actor.draw();
 
   drawWallOverlays(ctx, assets, wallOverlays, ts, view.depth);
+  drawFogOfWar(ctx, vp, view, minX, minY, maxX, maxY);
   for (const overlay of actorOverlays) overlay();
 
   drawDamagePopups(ctx, vp, grid, frame.elapsed, assets);
@@ -596,7 +577,7 @@ function wallFrontSprite(grid: Grid, x: number, y: number): SpriteKey {
 function isWallStitchable(grid: Grid, x: number, y: number): boolean {
   if (!grid.inBounds(x, y)) return true;
   const terrain = grid.get(grid.cell(x, y));
-  return terrain === Terrain.WALL || terrain === Terrain.WALL_DECO;
+  return terrain === Terrain.WALL || terrain === Terrain.WALL_DECO || terrain === Terrain.SECRET_DOOR;
 }
 
 function isWalkableTerrain(terrain: Terrain): boolean {
@@ -623,11 +604,12 @@ function isFloorLikeTerrain(terrain: Terrain | null): boolean {
     terrain === Terrain.REGION_DECO_ALT ||
     terrain === Terrain.GRASS ||
     terrain === Terrain.TRAP ||
-    terrain === Terrain.SECRET_TRAP;
+    terrain === Terrain.SECRET_TRAP ||
+    terrain === Terrain.INACTIVE_TRAP;
 }
 
 function isDoorTerrain(terrain: Terrain | null): boolean {
-  return terrain === Terrain.DOOR || terrain === Terrain.SECRET_DOOR || terrain === Terrain.LOCKED_EXIT;
+  return terrain === Terrain.DOOR || terrain === Terrain.LOCKED_EXIT;
 }
 
 function drawWallCastShadow(
@@ -751,11 +733,117 @@ function drawWallOverlays(
   if (!assets) return;
   for (const overlay of overlays) {
     drawTileIndex(ctx, assets, overlay.tileIndex, overlay.drawX, overlay.drawY, tileSize, 1, depth);
-    if (!overlay.visible) {
-      ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
-      ctx.fillRect(overlay.drawX, overlay.drawY, tileSize, tileSize);
+  }
+}
+
+function drawFogOfWar(
+  ctx: CanvasRenderingContext2D,
+  vp: VP,
+  view: MapView,
+  minX: number,
+  minY: number,
+  maxX: number,
+  maxY: number,
+): void {
+  const { grid } = view;
+  const ts = vp.tileSize;
+  ctx.save();
+  ctx.fillStyle = "#000";
+
+  for (let y = minY; y <= maxY; y++) {
+    for (let x = minX; x <= maxX; x++) {
+      const cell = grid.cell(x, y);
+      const drawX = vp.offsetX + x * ts;
+      const drawY = vp.offsetY + y * ts;
+
+      if (!grid.inBounds(x, y) || grid.get(cell) === Terrain.EMPTY) {
+        fillFogRect(ctx, drawX, drawY, ts, ts, FOG_ALPHA.invisible);
+        continue;
+      }
+
+      if (isWallStitchable(grid, x, y)) {
+        drawWallFog(ctx, view, x, y, drawX, drawY, ts);
+      } else {
+        fillFogRect(ctx, drawX, drawY, ts, ts, fogAlphaAt(view, x, y));
+      }
     }
   }
+
+  ctx.restore();
+}
+
+function drawWallFog(
+  ctx: CanvasRenderingContext2D,
+  view: MapView,
+  x: number,
+  y: number,
+  drawX: number,
+  drawY: number,
+  tileSize: number,
+): void {
+  const { grid } = view;
+  const half = tileSize / 2;
+
+  if (y + 1 >= grid.height) {
+    fillFogRect(ctx, drawX, drawY, tileSize, tileSize, FOG_ALPHA.invisible);
+    return;
+  }
+
+  if (isWallStitchable(grid, x, y + 1)) {
+    const leftAlpha = x !== 0
+      ? wallSideFogAlpha(view, x, y, -1)
+      : FOG_ALPHA.invisible;
+    const rightAlpha = x + 1 < grid.width
+      ? wallSideFogAlpha(view, x, y, 1)
+      : FOG_ALPHA.invisible;
+    fillFogRect(ctx, drawX, drawY, half, tileSize, leftAlpha);
+    fillFogRect(ctx, drawX + half, drawY, tileSize - half, tileSize, rightAlpha);
+  } else {
+    fillFogRect(
+      ctx,
+      drawX,
+      drawY,
+      tileSize,
+      tileSize,
+      Math.max(fogAlphaAt(view, x, y), fogAlphaAt(view, x, y + 1)),
+    );
+  }
+}
+
+function wallSideFogAlpha(view: MapView, x: number, y: number, dx: -1 | 1): number {
+  const sideX = x + dx;
+  if (isWallStitchable(view.grid, sideX, y)) {
+    if (isWallStitchable(view.grid, sideX, y + 1)) return FOG_ALPHA.invisible;
+    return Math.max(
+      fogAlphaAt(view, x, y),
+      fogAlphaAt(view, sideX, y),
+      fogAlphaAt(view, sideX, y + 1),
+    );
+  }
+  return Math.max(fogAlphaAt(view, x, y), fogAlphaAt(view, sideX, y));
+}
+
+function fogAlphaAt(view: MapView, x: number, y: number): number {
+  const { grid } = view;
+  if (!grid.inBounds(x, y)) return FOG_ALPHA.invisible;
+  const cell = grid.cell(x, y);
+  if (grid.get(cell) === Terrain.EMPTY) return FOG_ALPHA.invisible;
+  if (view.visible.has(cell)) return FOG_ALPHA.visible;
+  if (view.explored.has(cell)) return FOG_ALPHA.visited;
+  return FOG_ALPHA.invisible;
+}
+
+function fillFogRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  alpha: number,
+): void {
+  if (alpha <= 0) return;
+  ctx.globalAlpha = alpha;
+  ctx.fillRect(x, y, width, height);
 }
 
 function drawCell(

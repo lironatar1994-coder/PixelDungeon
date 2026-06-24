@@ -137,6 +137,7 @@ async function boot(): Promise<void> {
   const emitActorDeath = (info: ActorDeathInfo) => bus.emit("actor:death", info);
   const emitItemPickup = (info: ItemPickupInfo) => bus.emit("item:pickup", info);
   const emitHeroLevelUp = (info: HeroLevelUpInfo) => bus.emit("hero:levelup", info);
+  const emitTrapTriggered = () => playSfx("trap");
   // One shared callback set so every GameWorld (new / loaded / restarted) is
   // wired to the same EventBus bridges.
   const worldCallbacks = {
@@ -148,6 +149,7 @@ async function boot(): Promise<void> {
     onActorDeath: emitActorDeath,
     onItemPickup: emitItemPickup,
     onHeroLevelUp: emitHeroLevelUp,
+    onTrapTriggered: emitTrapTriggered,
   };
 
   let appState: AppState = "MainMenu";
@@ -920,6 +922,13 @@ async function boot(): Promise<void> {
   });
 
   bus.on("ui:look", () => {
+    if (targetingMode === "look") {
+      cancelAutoWalk();
+      targetingMode = null;
+      selectedCell = null;
+      if (world?.search()) snapMapCameraToHero(true);
+      return;
+    }
     startTargetingMode("look");
   });
 
