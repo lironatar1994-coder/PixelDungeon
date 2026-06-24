@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { RNG } from "@/core/rng/Mulberry32";
 import { Terrain } from "@/core/grid/terrain";
 import { generateLevel } from "@/core/procgen/LevelGenerator";
-import { createSewerRegularLevelPlan, buildDungeonGenerationPlans } from "./plan";
+import { createSewerBossLevelPlan, createSewerRegularLevelPlan, buildDungeonGenerationPlans } from "./plan";
 import { buildRegularRoomGraph } from "./builders";
 import { doorCandidates } from "./rooms";
 
@@ -40,8 +40,8 @@ describe("sewer regular level plans", () => {
       feeling: "large",
       secretRoomCount: 0,
     });
-    expect(plan.standardRoomBudget).toBe(6);
-    expect(plan.specialRoomBudget).toBe(2);
+    expect(plan.standardRoomBudget).toBe(9);
+    expect(plan.specialRoomBudget).toBe(3);
   });
 
   it("keeps depth 1 free of secret rooms and distributes sewer secrets deterministically", () => {
@@ -49,9 +49,31 @@ describe("sewer regular level plans", () => {
     const b = buildDungeonGenerationPlans("SECRET-DIST", 26);
     expect(a).toEqual(b);
     expect(a[1]?.secretRoomCount).toBe(0);
-    const sewerSecretDepths = [1, 2, 3, 4, 5].filter((depth) => (a[depth]?.secretRoomCount ?? 0) > 0);
-    expect(sewerSecretDepths).toHaveLength(2);
+    expect(a[5]?.levelKind).toBe("sewerBoss");
+    expect(a[5]?.secretRoomCount).toBe(0);
+    const sewerSecretDepths = [1, 2, 3, 4].filter((depth) => (a[depth]?.secretRoomCount ?? 0) > 0);
+    expect(sewerSecretDepths).toHaveLength(1);
     expect(sewerSecretDepths).not.toContain(1);
+  });
+
+  it("creates the exact sewer depth split and Goo boss room list", () => {
+    const plans = buildDungeonGenerationPlans("DEPTH-SPLIT", 26);
+    for (let depth = 1; depth <= 4; depth++) {
+      expect(plans[depth]?.levelKind).toBe("sewerRegular");
+    }
+    expect(plans[5]?.levelKind).toBe("sewerBoss");
+    expect(plans[6]).toBeNull();
+
+    const boss = createSewerBossLevelPlan(new RNG("boss-plan"));
+    expect(boss.builder.kind).toBe("figureEight");
+    expect(boss.standardRoomBudget).toBe(3);
+    expect(boss.specialRoomBudget).toBe(0);
+    expect(boss.painter.trapCount).toBe(0);
+    expect(boss.painter.waterFill).toBe(0.5);
+    expect(boss.painter.grassFill).toBe(0.2);
+    expect(boss.rooms.filter((room) => room.role === "standard" && room.forcedNormal)).toHaveLength(3);
+    expect(boss.rooms.some((room) => room.id === "goo" && room.className?.endsWith("GooRoom"))).toBe(true);
+    expect(boss.rooms.some((room) => room.className === "RatKingRoom")).toBe(true);
   });
 });
 
@@ -157,7 +179,7 @@ describe("sewer regular painter integration", () => {
 
     const occupied = new Set<number>([level.entrance, level.exit]);
     for (const trap of level.trapMetadata ?? []) {
-      expect(level.grid.get(trap.cell)).toBe(Terrain.FLOOR);
+      expect([Terrain.TRAP, Terrain.SECRET_TRAP]).toContain(level.grid.get(trap.cell));
       expect(occupied.has(trap.cell)).toBe(false);
       occupied.add(trap.cell);
     }
@@ -169,7 +191,7 @@ describe("sewer regular painter integration", () => {
 
     const doors = level.grid.snapshot()
       .map((terrain, cell) => ({ terrain, cell }))
-      .filter(({ terrain }) => terrain === Terrain.DOOR)
+      .filter(({ terrain }) => terrain === Terrain.DOOR || terrain === Terrain.SECRET_DOOR)
       .map(({ cell }) => cell);
     expect(doors.length).toBeGreaterThanOrEqual(4);
     for (const door of doors) {
@@ -220,5 +242,31 @@ describe("sewer regular painter integration", () => {
     expect(dry.exit).toBe(wet.exit);
     expect(dry.trapMetadata).toEqual(wet.trapMetadata);
     expect(dry.groundItems).toEqual(wet.groundItems);
+  });
+
+  it("generates reachable Goo boss floors with boss metadata and a locked exit", () => {
+    const plan = createSewerBossLevelPlan(new RNG("goo-boss-plan"));
+    const level = generateLevel(40, 40, new RNG("goo-boss-map"), { plan });
+    const reach = reachable(level.grid, level.entrance);
+
+    expect(reach.has(level.exit)).toBe(true);
+    expect(level.grid.get(level.exit)).toBe(Terrain.LOCKED_EXIT);
+    expect(level.trapMetadata).toEqual([]);
+    expect(level.roomMetadata?.some((room) => room.markers?.includes("spawn:goo"))).toBe(true);
+    expect(level.roomMetadata?.some((room) => room.markers?.includes("spawn:ratKing"))).toBe(true);
+    expect(level.roomMetadata?.some((room) => room.markers?.includes("lockedExit"))).toBe(true);
+
+    const gooRoom = level.roomMetadata?.find((room) => room.markers?.includes("spawn:goo"));
+    const ratKingRoom = level.roomMetadata?.find((room) => room.markers?.includes("spawn:ratKing"));
+    expect(gooRoom).toBeDefined();
+    expect(ratKingRoom).toBeDefined();
+    expect(reach.has(level.grid.cell(
+      Math.floor(gooRoom!.rect.x + gooRoom!.rect.w / 2),
+      Math.floor(gooRoom!.rect.y + gooRoom!.rect.h / 2),
+    ))).toBe(true);
+    expect(reach.has(level.grid.cell(
+      Math.floor(ratKingRoom!.rect.x + ratKingRoom!.rect.w / 2),
+      Math.floor(ratKingRoom!.rect.y + ratKingRoom!.rect.h / 2),
+    ))).toBe(true);
   });
 });

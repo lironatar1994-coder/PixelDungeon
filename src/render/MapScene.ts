@@ -15,6 +15,15 @@ const VISIBLE: Record<Terrain, string> = {
   [Terrain.DOOR]: "#c98a45",
   [Terrain.GRASS]: "#6a8c4f",
   [Terrain.WATER]: "#4b85a3",
+  [Terrain.EMPTY_SP]: "#b7b39c",
+  [Terrain.WALL_DECO]: "#465156",
+  [Terrain.REGION_DECO]: "#6c7f45",
+  [Terrain.REGION_DECO_ALT]: "#52613e",
+  [Terrain.SECRET_DOOR]: "#5f5b4c",
+  [Terrain.TRAP]: "#b85c42",
+  [Terrain.SECRET_TRAP]: "#5b574a",
+  [Terrain.LOCKED_EXIT]: "#c98a45",
+  [Terrain.CHASM]: "#050505",
 };
 
 const EXPLORED: Record<Terrain, string> = {
@@ -24,6 +33,15 @@ const EXPLORED: Record<Terrain, string> = {
   [Terrain.DOOR]: "#5e4524",
   [Terrain.GRASS]: "#2f4021",
   [Terrain.WATER]: "#203a49",
+  [Terrain.EMPTY_SP]: "#4f4d42",
+  [Terrain.WALL_DECO]: "#20282a",
+  [Terrain.REGION_DECO]: "#2f4021",
+  [Terrain.REGION_DECO_ALT]: "#27321e",
+  [Terrain.SECRET_DOOR]: "#3a342a",
+  [Terrain.TRAP]: "#5a3027",
+  [Terrain.SECRET_TRAP]: "#3f3c32",
+  [Terrain.LOCKED_EXIT]: "#5e4524",
+  [Terrain.CHASM]: "#000000",
 };
 
 const COLORS = {
@@ -343,20 +361,20 @@ export function drawMapScene(
           drewTerrain = drawSprite(ctx, assets, "water", drawX, drawY, ts, 1, undefined, view.depth);
           spriteKey = null;
           tileIndex = stitchWaterTile(grid, x, y);
-        } else if (terrain === Terrain.WALL) {
+        } else if (isWallStitchable(grid, x, y)) {
           const southTerrain = terrainAt(grid, x, y + 1);
-          if (southTerrain === Terrain.DOOR) {
+          if (isDoorTerrain(southTerrain)) {
             const southCell = grid.cell(x, y + 1);
             spriteKey = null;
             tileIndex = stitchRaisedWallTile(RAISED_WALL_DOOR, grid, x, y);
             overhangIndex = view.openDoors.has(southCell) ? null : DOOR_SIDEWAYS;
-          } else if (southTerrain === Terrain.WALL) {
+          } else if (isWallStitchable(grid, x, y + 1)) {
             spriteKey = null;
             tileIndex = stitchInternalWallTile(grid, x, y);
           } else {
             spriteKey = wallFrontSprite(grid, x, y);
           }
-        } else if (terrain === Terrain.DOOR) {
+        } else if (isDoorTerrain(terrain)) {
           const isOpen = view.openDoors.has(cell);
           spriteKey = null;
           tileIndex = isWallStitchable(grid, x, y - 1)
@@ -364,15 +382,15 @@ export function drawMapScene(
             : isOpen
               ? RAISED_DOOR_OPEN
               : RAISED_DOOR;
-        } else if (terrain === Terrain.FLOOR) {
+        } else if (isFloorLikeTerrain(terrain)) {
           spriteKey = floorSpriteForCell(view, cell);
         }
 
         if (!isWallStitchable(grid, x, y)) {
           const southTerrain = terrainAt(grid, x, y + 1);
-          if (southTerrain === Terrain.WALL) {
+          if (isWallStitchable(grid, x, y + 1)) {
             overhangIndex = stitchWallOverhangTile(grid, x, y, view.openDoors.has(cell));
-          } else if (southTerrain === Terrain.DOOR) {
+          } else if (isDoorTerrain(southTerrain)) {
             const doorCell = grid.cell(x, y + 1);
             overhangIndex = view.openDoors.has(doorCell) ? DOOR_OVERHANG_OPEN : DOOR_OVERHANG;
           }
@@ -578,11 +596,11 @@ function wallFrontSprite(grid: Grid, x: number, y: number): SpriteKey {
 function isWallStitchable(grid: Grid, x: number, y: number): boolean {
   if (!grid.inBounds(x, y)) return true;
   const terrain = grid.get(grid.cell(x, y));
-  return terrain === Terrain.WALL;
+  return terrain === Terrain.WALL || terrain === Terrain.WALL_DECO;
 }
 
 function isWalkableTerrain(terrain: Terrain): boolean {
-  return terrain === Terrain.FLOOR || terrain === Terrain.DOOR;
+  return terrain !== Terrain.EMPTY && terrain !== Terrain.WALL && terrain !== Terrain.WALL_DECO && terrain !== Terrain.CHASM;
 }
 
 function stitchWaterTile(grid: Grid, x: number, y: number): number {
@@ -595,7 +613,21 @@ function stitchWaterTile(grid: Grid, x: number, y: number): number {
 }
 
 function isWaterEdgeTerrain(terrain: Terrain | null): boolean {
-  return terrain === Terrain.EMPTY || terrain === Terrain.FLOOR || terrain === Terrain.DOOR || terrain === Terrain.GRASS;
+  return terrain === Terrain.EMPTY || isFloorLikeTerrain(terrain) || isDoorTerrain(terrain) || terrain === Terrain.GRASS || terrain === Terrain.REGION_DECO || terrain === Terrain.REGION_DECO_ALT;
+}
+
+function isFloorLikeTerrain(terrain: Terrain | null): boolean {
+  return terrain === Terrain.FLOOR ||
+    terrain === Terrain.EMPTY_SP ||
+    terrain === Terrain.REGION_DECO ||
+    terrain === Terrain.REGION_DECO_ALT ||
+    terrain === Terrain.GRASS ||
+    terrain === Terrain.TRAP ||
+    terrain === Terrain.SECRET_TRAP;
+}
+
+function isDoorTerrain(terrain: Terrain | null): boolean {
+  return terrain === Terrain.DOOR || terrain === Terrain.SECRET_DOOR || terrain === Terrain.LOCKED_EXIT;
 }
 
 function drawWallCastShadow(
@@ -633,7 +665,7 @@ function stitchInternalWallTile(grid: Grid, x: number, y: number): number {
 function stitchWallOverhangTile(grid: Grid, x: number, y: number, currentDoorOpen: boolean): number {
   const currentTerrain = terrainAt(grid, x, y);
   let result =
-    currentTerrain === Terrain.DOOR
+    isDoorTerrain(currentTerrain)
       ? currentDoorOpen
         ? DOOR_SIDEWAYS_OVERHANG
         : DOOR_SIDEWAYS_OVERHANG_CLOSED

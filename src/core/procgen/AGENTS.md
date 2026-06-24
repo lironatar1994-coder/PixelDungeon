@@ -9,14 +9,16 @@ Antigravity AI
 - For regular levels, derive scoped RNG streams for builder, terrain paint, stair placement, traps, and loot so decoration changes do not perturb entity or loot decisions.
 - Do not import rendering, DOM, browser storage, audio, UI, or event-bus code.
 - Preserve legacy `generateLevel(width, height, rng)` behavior for regions that have not been ported to regular-level plans.
-- Sewer depths `1-5` use the regular room/list/build/paint pipeline; deeper regions stay on the legacy generator until ported.
+- Sewer depths `1-4` use the algorithmic `SewerLevel` regular room/list/build/paint pipeline; depth `5` uses the `SewerBossLevel` Goo boss plan; deeper regions stay on the legacy generator until ported.
 - Save-facing metadata must remain optional and backward-compatible.
 
 # Work Guidance
 - Model original Shattered Pixel Dungeon generation as data flow: plan rooms, build a connected graph, paint rooms/doors/decor, then place stairs, traps, and loot.
+- Ported sewer generation should preserve upstream room class identities in plan/metadata where possible, while keeping unsupported mechanics as metadata foundations instead of browser/UI dependencies.
 - Doors belong to room connections and must be shifted with room normalization.
 - Decorative water, grass, and room patterns must not overwrite doors, stairs, trap cells, required loot, or block the generated room graph.
-- Angle-placed rooms must reject padded collisions against non-connected rooms; guaranteed fallback layouts must reject actual overlap and unconnected door seams.
+- Angle-placed rooms must reject padded collisions against non-connected rooms and keep the SPD branch-angle bias toward loop centers.
+- Keep generation RNG streams scoped for builder, terrain paint, stair placement, traps, and loot so painter density changes do not move loot, traps, or stairs.
 
 # Verification
 - Run focused procgen tests with `npm test -- src/core/procgen`.

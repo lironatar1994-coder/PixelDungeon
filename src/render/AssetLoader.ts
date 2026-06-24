@@ -243,10 +243,16 @@ export class AssetLoader implements SpriteSheetAssets {
   }
 
   spriteForTerrain(terrain: Terrain, _depth = 1): SpriteKey {
-    if (terrain === Terrain.FLOOR) return "floor";
-    if (terrain === Terrain.GRASS) return "grass";
+    if (terrain === Terrain.FLOOR || terrain === Terrain.EMPTY_SP) return "floor";
+    if (
+      terrain === Terrain.GRASS ||
+      terrain === Terrain.REGION_DECO ||
+      terrain === Terrain.REGION_DECO_ALT ||
+      terrain === Terrain.TRAP ||
+      terrain === Terrain.SECRET_TRAP
+    ) return "grass";
     if (terrain === Terrain.WATER) return "water";
-    if (terrain === Terrain.DOOR) return "doorFlat";
+    if (terrain === Terrain.DOOR || terrain === Terrain.SECRET_DOOR || terrain === Terrain.LOCKED_EXIT) return "doorFlat";
     return "wallTop";
   }
 

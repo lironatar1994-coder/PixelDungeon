@@ -956,7 +956,7 @@ GameWorld pickup/consume/equipment flows, SaveManager rehydration,
 DungeonManager loot persistence, and procgen loot selection.
 
 ### Phase 20 - Sewer Regular-Level Pipeline COMPLETE
-Replaced sewer depths 1-5 with a plan/list/build/paint pipeline modeled on
+Replaced sewer regular depths with a plan/list/build/paint pipeline modeled on
 Shattered Pixel Dungeon's `RegularLevel`, `RegularBuilder`, `LoopBuilder`,
 `FigureEightBuilder`, and `RegularPainter`. **`plan.ts`**
 ([src/core/procgen/regular/plan.ts](src/core/procgen/regular/plan.ts)) builds
@@ -983,3 +983,23 @@ terrain paint, stair placement, traps, and loot, so tuning grass/water density
 does not move item drops. Painter reachability is tested after all decoration
 is applied, and builder collision checks reject padded non-connected overlaps
 while the fallback layout rejects unconnected door seams.
+
+### Phase 20.1 - Algorithm-Exact Sewer + Goo Boss Port COMPLETE
+Tightened the sewer procgen layer into an algorithmic TypeScript port of the
+local Shattered Pixel Dungeon source at
+`C:\Users\liron\shattered-pixel-dungeon-master`. Depths 1-4 now route to
+`SewerLevel` regular generation, depth 5 routes to a `SewerBossLevel` Goo boss
+plan, and depths 6+ keep the legacy generator until their regions are ported.
+
+The regular procgen files now carry upstream room class identities and boss
+metadata through the existing save-compatible interfaces:
+**`plan.ts`** selects sewer regular plans or Goo boss plans, **`rooms.ts`** and
+**`builders.ts`** model SPD-style room geometry, connection limits, loop and
+figure-eight placement, branch-angle bias, and padded collision rejection, and
+**`painter.ts`** paints supported sewer rooms, Goo room variants, the locked
+boss exit, trap metadata, sewer decor, scoped RNG streams, and protected
+stairs/loot. Core terrain gained serializable aliases such as `EMPTY_SP`,
+`WALL_DECO`, `REGION_DECO`, `SECRET_DOOR`, `TRAP`, `SECRET_TRAP`, and
+`LOCKED_EXIT`; rendering maps them onto existing sewer sprites without changing
+the public `generateLevel`, `DungeonManager`, `LevelSnapshot`, `rooms`,
+`entrance`, `exit`, or `groundItems` contracts.

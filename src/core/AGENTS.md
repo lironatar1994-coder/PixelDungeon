@@ -1,5 +1,5 @@
 # Purpose
-Pure, headless game logic, math, state management, and algorithms inspired by Shattered Pixel Dungeon.
+Pure, headless game logic, math, state management, and algorithmic ports from Shattered Pixel Dungeon.
 
 # Ownership
 Antigravity AI
@@ -10,6 +10,7 @@ Antigravity AI
 - All game rules, equations, turn schedules, and grid coordinates reside here.
 - Must be fully unit testable under Vitest.
 - Procedural generation must remain deterministic from explicit seeds and save-compatible snapshots.
+- Shattered Pixel Dungeon algorithm ports must preserve local public contracts and use Mulberry32 seeds rather than upstream Java seed parity.
 
 # Work Guidance
 - Use Mulberry32 for all seeded RNG operations.

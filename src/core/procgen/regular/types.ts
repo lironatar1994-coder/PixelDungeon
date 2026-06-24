@@ -13,14 +13,24 @@ export type RoomFamily =
   | "circleBasin"
   | "safeSpecial"
   | "safeSecret"
-  | "connection";
+  | "connection"
+  | "bossEntrance"
+  | "bossExit"
+  | "gooDiamond"
+  | "gooWalled"
+  | "gooThinPillars"
+  | "gooThickPillars"
+  | "ratKing";
 export type SizeCategory = "normal" | "large" | "giant";
+export type RegularLevelKind = "sewerRegular" | "sewerBoss";
 
 export interface RegularRoomSpec {
   id: string;
   role: RoomRole;
   family: RoomFamily;
   sizeCategory: SizeCategory;
+  className?: string;
+  forcedNormal?: boolean;
 }
 
 export interface RegularBuilderConfig {
@@ -47,6 +57,7 @@ export interface RegularPainterConfig {
 
 export interface RegularLevelPlan {
   kind: "regular";
+  levelKind?: RegularLevelKind;
   depth: number;
   region: RegularRegion;
   feeling: LevelFeeling;
@@ -65,6 +76,8 @@ export interface GeneratedRoomMetadata {
   sizeCategory: SizeCategory;
   rect: { x: number; y: number; w: number; h: number };
   connections: string[];
+  className?: string;
+  markers?: string[];
 }
 
 export interface GeneratedTrapMetadata {
@@ -86,6 +99,7 @@ export interface RegularRoomLike {
   readonly role: RoomRole;
   readonly family: RoomFamily;
   readonly sizeCategory: SizeCategory;
+  readonly className?: string;
   rect: Rect | null;
   readonly connectedRooms: RegularRoomLike[];
 }

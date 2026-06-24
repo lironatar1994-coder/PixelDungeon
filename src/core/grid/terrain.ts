@@ -23,6 +23,24 @@ export enum Terrain {
   GRASS = 4,
   /** Shallow water: walkable, but might wash off debuffs or take longer to cross. */
   WATER = 5,
+  /** SPD special floor, used for raised paths, bridges, and boss exits. */
+  EMPTY_SP = 6,
+  /** Decorative wall, e.g. sewer sinks. Solid like a wall. */
+  WALL_DECO = 7,
+  /** Region-specific decoration. In sewers this behaves like grass/barrels. */
+  REGION_DECO = 8,
+  /** Alternate region decoration, used by ring-room centers. */
+  REGION_DECO_ALT = 9,
+  /** Hidden door metadata. Walkable here until search/hidden-door gameplay is ported. */
+  SECRET_DOOR = 10,
+  /** Visible trap marker. Kept walkable; trap behavior is metadata-driven for now. */
+  TRAP = 11,
+  /** Hidden trap marker. Kept walkable; trap behavior is metadata-driven for now. */
+  SECRET_TRAP = 12,
+  /** Boss-floor locked exit tile. Walkable so current transition code remains compatible. */
+  LOCKED_EXIT = 13,
+  /** Chasm-like blocked space used by some original room painters. */
+  CHASM = 14,
 }
 
 export interface CellProperties {
@@ -41,4 +59,13 @@ export const TERRAIN_PROPERTIES: Record<Terrain, CellProperties> = {
   [Terrain.DOOR]: { solid: false, walkable: true, transparent: true },
   [Terrain.GRASS]: { solid: false, walkable: true, transparent: true },
   [Terrain.WATER]: { solid: false, walkable: true, transparent: true },
+  [Terrain.EMPTY_SP]: { solid: false, walkable: true, transparent: true },
+  [Terrain.WALL_DECO]: { solid: true, walkable: false, transparent: false },
+  [Terrain.REGION_DECO]: { solid: false, walkable: true, transparent: true },
+  [Terrain.REGION_DECO_ALT]: { solid: false, walkable: true, transparent: true },
+  [Terrain.SECRET_DOOR]: { solid: false, walkable: true, transparent: true },
+  [Terrain.TRAP]: { solid: false, walkable: true, transparent: true },
+  [Terrain.SECRET_TRAP]: { solid: false, walkable: true, transparent: true },
+  [Terrain.LOCKED_EXIT]: { solid: false, walkable: true, transparent: true },
+  [Terrain.CHASM]: { solid: true, walkable: false, transparent: true },
 };

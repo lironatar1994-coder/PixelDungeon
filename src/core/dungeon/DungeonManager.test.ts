@@ -83,16 +83,21 @@ describe("DungeonManager", () => {
     expect(strengthDepths).toHaveLength(2);
   });
 
-  it("uses sewer regular metadata for depths 1..5 and leaves deeper floors on the legacy generator", () => {
+  it("uses sewer regular metadata for depths 1..4, Goo boss metadata on depth 5, and legacy generation after that", () => {
     const d = new DungeonManager("SEWER-METADATA");
     const sewer = d.levelAt(1);
+    const boss = d.levelAt(5);
     const deeper = d.levelAt(6);
 
     expect(sewer.roomMetadata.length).toBeGreaterThan(0);
     expect(sewer.trapMetadata.length).toBeGreaterThan(0);
+    expect(boss.roomMetadata.some((room) => room.markers?.includes("spawn:goo"))).toBe(true);
+    expect(boss.roomMetadata.some((room) => room.markers?.includes("spawn:ratKing"))).toBe(true);
+    expect(boss.trapMetadata).toEqual([]);
     expect(deeper.roomMetadata).toEqual([]);
     expect(deeper.trapMetadata).toEqual([]);
     expect(d.snapshot().generationPlans?.[1]?.region).toBe("sewer");
+    expect(d.snapshot().generationPlans?.[5]?.levelKind).toBe("sewerBoss");
     expect(d.snapshot().generationPlans?.[6]).toBeNull();
   });
 
